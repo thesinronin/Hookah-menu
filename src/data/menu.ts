@@ -44,13 +44,6 @@ export function createInitialFlavors(): FlavorOption[] {
   }));
 }
 
-export const BOWL_UPGRADES = [
-  { label: 'Classic Clay', extraPrice: 0 },
-  { label: 'Phunnel Bowl', extraPrice: 4 },
-  { label: 'Pineapple Head', extraPrice: 12 },
-  { label: 'Orange Head', extraPrice: 10 },
-];
-
 export interface SeatingTierConfig {
   id: SeatingTierId;
   menuItemId: string;
@@ -214,10 +207,9 @@ export function createInitialTables(now = Date.now()): LoungeTable[] {
           menuItemId: 'h-downstairs',
           name: 'Downstairs Hookah',
           category: 'hookah',
-          unitPrice: 54,
+          unitPrice: 50,
           quantity: 1,
           flavors: ['Love 66', 'Mint'],
-          bowlUpgrade: 'Phunnel Bowl',
           iceHose: false,
           addedBy: 'Nadia',
           prepStatus: 'served',
@@ -251,10 +243,9 @@ export function createInitialTables(now = Date.now()): LoungeTable[] {
           menuItemId: 'h-vip-allday',
           name: 'All Day VIP',
           category: 'hookah',
-          unitPrice: 277,
+          unitPrice: 265,
           quantity: 1,
           flavors: ['Blue Mist', 'Lady Killer', 'Mint'],
-          bowlUpgrade: 'Pineapple Head',
           iceHose: true,
           notes: 'Extra ice cubes',
           addedBy: 'Nadia',
@@ -306,7 +297,6 @@ export function createInitialTables(now = Date.now()): LoungeTable[] {
           unitPrice: 100,
           quantity: 1,
           flavors: ['Double Apple', 'Mint'],
-          bowlUpgrade: 'Classic Clay',
           iceHose: false,
           addedBy: 'Sam',
           prepStatus: 'prepping',
@@ -355,7 +345,6 @@ export function createInitialTables(now = Date.now()): LoungeTable[] {
           unitPrice: 50,
           quantity: 1,
           flavors: ['Watermelon', 'Mint'],
-          bowlUpgrade: 'Classic Clay',
           iceHose: false,
           addedBy: 'Sam',
           prepStatus: 'served',

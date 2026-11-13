@@ -248,7 +248,6 @@ export default function App() {
         ? sourceOrders.map((o) => ({
             name: o.name,
             quantity: o.quantity,
-            bowlSelection: o.bowlUpgrade || 'Classic Clay',
             flavors: o.flavors,
             iceHose: o.iceHose,
             notes: o.notes,
@@ -257,7 +256,6 @@ export default function App() {
             {
               name: 'Hookah Prep',
               quantity: 1,
-              bowlSelection: 'Classic Clay',
             },
           ];
 

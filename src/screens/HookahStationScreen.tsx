@@ -199,10 +199,11 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
                           Mix: {order.flavors.join(' + ')}
                         </p>
                       )}
-                      <p className="mt-1 text-xs text-cyan-200 font-semibold">
-                        Bowl: {order.bowlUpgrade || 'Classic Clay'}
-                        {order.iceHose ? ' · Ice Hose' : ''}
-                      </p>
+                      {order.iceHose && (
+                        <p className="mt-1 text-xs text-cyan-200 font-semibold">
+                          + Ice Hose
+                        </p>
+                      )}
                       {order.notes && (
                         <p className="mt-1.5 text-xs text-amber-300">
                           Note: {order.notes}

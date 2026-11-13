@@ -47,11 +47,8 @@ export const ThermalReceiptPrintView: React.FC<ThermalReceiptPrintViewProps> = (
             <div className="text-sm font-bold">
               {item.quantity}x {item.name}
             </div>
-            <div className="mt-1 inline-block border-2 border-black px-1.5 py-0.5 text-sm font-black uppercase">
-              BOWL: {item.bowlSelection || 'Classic Clay'}
-            </div>
             {item.flavors && item.flavors.length > 0 && (
-              <div className="mt-1 text-xs font-bold">
+              <div className="mt-1 inline-block border-2 border-black px-1.5 py-0.5 text-sm font-black uppercase">
                 MIX: {item.flavors.join(' + ')}
               </div>
             )}

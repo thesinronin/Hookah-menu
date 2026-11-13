@@ -112,7 +112,7 @@ export interface LoungeSettings {
 export interface KitchenTicketItem {
   name: string;
   quantity: number;
-  bowlSelection: string;
+  bowlSelection?: string;
   flavors?: string[];
   iceHose?: boolean;
   notes?: string;

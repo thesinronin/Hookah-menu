@@ -14,7 +14,6 @@ import {
   X,
 } from 'lucide-react';
 import {
-  BOWL_UPGRADES,
   MENU_ITEMS,
   SEATING_TIERS,
   SEATING_TIER_LIST,
@@ -75,7 +74,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 }) => {
   const [guestName, setGuestName] = useState('');
   const [seatTableNumber, setSeatTableNumber] = useState('');
-  const [seatBowl, setSeatBowl] = useState(BOWL_UPGRADES[0]);
   const [isEditingTableNum, setIsEditingTableNum] = useState(false);
   const [tableNumDraft, setTableNumDraft] = useState('');
   const [seatingTier, setSeatingTier] = useState<SeatingTierId>('downstairs');
@@ -90,7 +88,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   // Hookah Mix Builder State
   const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
   const [selectedFlavors, setSelectedFlavors] = useState<string[]>([]);
-  const [selectedBowl, setSelectedBowl] = useState(BOWL_UPGRADES[0]);
   const [iceHose, setIceHose] = useState(false);
   const [hookahNotes, setHookahNotes] = useState('');
 
@@ -110,7 +107,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
     setAddExtraCount(1);
     setGuestName('');
     setSeatTableNumber(table?.tableNumber || '');
-    setSeatBowl(BOWL_UPGRADES[0]);
     setIsEditingTableNum(false);
     setTableNumDraft(table?.tableNumber || '');
     setSeatingTier(defaultTier);
@@ -207,7 +203,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
       const firstAvail = flavors.find((f) => f.available)?.name;
       setCustomizingItem({ ...item, price: effectivePrice });
       setSelectedFlavors(firstAvail ? [firstAvail] : []);
-      setSelectedBowl(BOWL_UPGRADES[0]);
       setIceHose(false);
       setHookahNotes('');
       return;
@@ -231,8 +226,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
     if (!customizingItem) return;
     const flavors =
       selectedFlavors.length > 0 ? selectedFlavors : ['House Mix'];
-    const extraBowl =
-      customizingItem.category === 'hookah' ? selectedBowl.extraPrice : 0;
     const extraIce = iceHose ? activeTier.iceHosePrice : 0;
 
     onAddOrder(table.id, {
@@ -240,11 +233,9 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
       menuItemId: customizingItem.id,
       name: customizingItem.name,
       category: customizingItem.category,
-      unitPrice: customizingItem.price + extraBowl + extraIce,
+      unitPrice: customizingItem.price + extraIce,
       quantity: 1,
       flavors,
-      bowlUpgrade:
-        customizingItem.category === 'hookah' ? selectedBowl.label : undefined,
       iceHose,
       notes: hookahNotes.trim() || undefined,
       prepStatus: 'queued',
@@ -431,11 +422,10 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                   : chosen.includedPeople + extraPeople;
                 const baseTabPrice = chosen.basePrice;
                 const extraTotal = extraPeople * chosen.extraPersonPrice;
-                const bowlTotal = seatBowl.extraPrice;
                 const iceTotal = seatIceHose ? chosen.iceHosePrice : 0;
                 const upgradeTotal = upgradeVipApplied ? VIP_UPGRADE_PRICE : 0;
                 const openingTotal =
-                  baseTabPrice + extraTotal + bowlTotal + iceTotal + upgradeTotal;
+                  baseTabPrice + extraTotal + iceTotal + upgradeTotal;
 
                 return (
                   <>
@@ -499,13 +489,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between text-slate-300">
-                        <span>Bowl ({seatBowl.label})</span>
-                        <span className="font-mono font-semibold text-cyan-200 tabular-nums">
-                          {bowlTotal > 0 ? `+$${bowlTotal.toFixed(2)}` : '$0.00'}
-                        </span>
-                      </div>
-
                       {upgradeVipApplied && (
                         <div className="flex items-center justify-between text-amber-300">
                           <span>Upgrade to VIP</span>
@@ -547,36 +530,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                         </button>
                       </div>
                       {renderFlavorPickerGrid(seatFlavors, setSeatFlavors)}
-                    </div>
-
-                    <div>
-                      <span className="block text-xs font-medium text-cyan-200/80 mb-2">
-                        Bowl Selection
-                      </span>
-                      <div className="grid grid-cols-2 gap-2">
-                        {BOWL_UPGRADES.map((bowl) => {
-                          const active = seatBowl.label === bowl.label;
-                          return (
-                            <button
-                              key={bowl.label}
-                              type="button"
-                              onClick={() => setSeatBowl(bowl)}
-                              className={`flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-                                active
-                                  ? 'border-cyan-400 bg-cyan-400/15 text-cyan-200'
-                                  : 'border-cyan-500/20 bg-[#060913] text-slate-300 hover:border-cyan-400/50'
-                              }`}
-                            >
-                              <span>{bowl.label}</span>
-                              {bowl.extraPrice > 0 && (
-                                <span className="font-mono text-cyan-300">
-                                  +${bowl.extraPrice}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
                     </div>
 
                     <button
@@ -629,12 +582,10 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                             category: 'hookah',
                             unitPrice:
                               chosen.basePrice +
-                              seatBowl.extraPrice +
                               (seatIceHose ? chosen.iceHosePrice : 0),
                             quantity: 1,
                             flavors:
                               seatFlavors.length > 0 ? seatFlavors : undefined,
-                            bowlUpgrade: seatBowl.label,
                             iceHose: seatIceHose,
                             prepStatus: 'queued',
                             orderedAt: now,
@@ -685,7 +636,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           seatTableNumber.trim() || undefined
                         );
                         setGuestName('');
-                        setSeatBowl(BOWL_UPGRADES[0]);
                         setSeatUpgradeVip(false);
                         setSeatFlavors([]);
                       }}
@@ -779,38 +729,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
               {renderFlavorPickerGrid(selectedFlavors, setSelectedFlavors)}
 
-              {customizingItem.category === 'hookah' && (
-                <div>
-                  <span className="block text-xs font-medium text-cyan-200/80 mb-2">
-                    Bowl Selection
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    {BOWL_UPGRADES.map((bowl) => {
-                      const active = selectedBowl.label === bowl.label;
-                      return (
-                        <button
-                          key={bowl.label}
-                          type="button"
-                          onClick={() => setSelectedBowl(bowl)}
-                          className={`flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-                            active
-                              ? 'border-cyan-400 bg-cyan-400/15 text-cyan-200'
-                              : 'border-cyan-500/20 bg-[#060913] text-slate-300 hover:border-cyan-400/50'
-                          }`}
-                        >
-                          <span>{bowl.label}</span>
-                          {bowl.extraPrice > 0 && (
-                            <span className="font-mono text-cyan-300">
-                              +${bowl.extraPrice}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               <button
                 type="button"
                 onClick={() => setIceHose((v) => !v)}
@@ -850,9 +768,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                 Send to Hookah Station · $
                 {(
                   customizingItem.price +
-                  (customizingItem.category === 'hookah'
-                    ? selectedBowl.extraPrice
-                    : 0) +
                   (iceHose ? activeTier.iceHosePrice : 0)
                 ).toFixed(2)}
               </button>
@@ -1108,14 +1023,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           <p className="text-sm font-semibold text-slate-100 truncate">
                             {order.name}
                           </p>
-                          {(order.flavors || order.bowlUpgrade || order.iceHose) && (
+                          {(order.flavors || order.iceHose) && (
                             <p className="mt-0.5 text-xs text-fuchsia-300">
                               {order.flavors ? order.flavors.join(' + ') : ''}
-                              {order.bowlUpgrade
-                                ? `${order.flavors ? ' · ' : ''}${order.bowlUpgrade}`
-                                : ''}
                               {order.iceHose
-                                ? `${order.flavors || order.bowlUpgrade ? ' · ' : ''}Ice Hose`
+                                ? `${order.flavors ? ' · ' : ''}Ice Hose`
                                 : ''}
                             </p>
                           )}

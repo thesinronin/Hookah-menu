@@ -7,7 +7,6 @@ import {
   Smartphone,
   X,
 } from 'lucide-react';
-import { BOWL_UPGRADES } from '../data/menu';
 import {
   isWebBluetoothSupported,
   printViaBluetoothEscPos,
@@ -76,12 +75,6 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
     tableNumber: cleanTableNum,
     printedAt: Date.now(),
     items,
-  };
-
-  const updateItemBowl = (idx: number, bowl: string) => {
-    setItems((prev) =>
-      prev.map((it, i) => (i === idx ? { ...it, bowlSelection: bowl } : it))
-    );
   };
 
   const persistPrinterConfig = () => {
@@ -159,7 +152,7 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
                 Kitchen Thermal Print
               </h2>
               <p className="text-xs text-slate-400">
-                Prints Table # &amp; Bowl Selection to your kitchen printer
+                Prints Table # &amp; Flavor Mix to your kitchen printer
               </p>
             </div>
           </div>
@@ -216,45 +209,36 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
             </div>
           </div>
 
-          {/* Bowl Selection Confirmation per Item */}
+          {/* Kitchen Ticket Items */}
           <div className="space-y-2">
             <span className="block text-xs font-medium text-cyan-200/80">
-              Bowl Selection per Hookah
+              Items on Kitchen Ticket
             </span>
             {items.map((item, idx) => (
               <div
                 key={idx}
-                className="rounded-xl border border-cyan-500/20 bg-[#060913] p-3 space-y-2"
+                className="rounded-xl border border-cyan-500/20 bg-[#060913] px-3 py-2.5 space-y-1"
               >
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-slate-100">
                     {item.quantity}× {item.name}
                   </span>
-                  {item.flavors && item.flavors.length > 0 && (
-                    <span className="text-fuchsia-300 truncate ml-2">
-                      {item.flavors.join(' + ')}
+                  {item.iceHose && (
+                    <span className="font-mono text-[11px] font-semibold text-cyan-300">
+                      + Ice Hose
                     </span>
                   )}
                 </div>
-                <select
-                  value={item.bowlSelection || 'Classic Clay'}
-                  onChange={(e) => updateItemBowl(idx, e.target.value)}
-                  className="w-full min-h-[42px] rounded-lg border border-cyan-500/30 bg-[#0B101D] px-3 py-1.5 text-xs font-semibold text-cyan-100 focus:border-cyan-400 focus:outline-none"
-                >
-                  {BOWL_UPGRADES.map((b) => (
-                    <option key={b.label} value={b.label}>
-                      Bowl: {b.label}
-                    </option>
-                  ))}
-                  {!BOWL_UPGRADES.some(
-                    (b) => b.label === item.bowlSelection
-                  ) &&
-                    item.bowlSelection && (
-                      <option value={item.bowlSelection}>
-                        Bowl: {item.bowlSelection}
-                      </option>
-                    )}
-                </select>
+                {item.flavors && item.flavors.length > 0 && (
+                  <p className="text-xs font-semibold text-fuchsia-300">
+                    Mix: {item.flavors.join(' + ')}
+                  </p>
+                )}
+                {item.notes && (
+                  <p className="text-[11px] text-slate-400">
+                    Note: {item.notes}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -354,11 +338,8 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
                     <div className="font-bold">
                       {item.quantity}x {item.name}
                     </div>
-                    <div className="mt-0.5 inline-block border border-black px-1 py-0.5 text-[11px] font-black uppercase">
-                      BOWL: {item.bowlSelection || 'Classic Clay'}
-                    </div>
                     {item.flavors && item.flavors.length > 0 && (
-                      <div className="mt-0.5 font-semibold">
+                      <div className="mt-0.5 inline-block border border-black px-1 py-0.5 text-[11px] font-black uppercase">
                         MIX: {item.flavors.join(' + ')}
                       </div>
                     )}

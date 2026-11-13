@@ -19,7 +19,7 @@ function line(str: string): number[] {
 
 /**
  * Generates raw ESC/POS command bytes for 58mm (32 cols) or 80mm (42/48 cols)
- * thermal kitchen printers. Emphasizes Table Number and Bowl Selection.
+ * thermal kitchen printers. Emphasizes Table Number and Flavor Mix.
  */
 export function buildEscPosBuffer(
   ticket: KitchenTicketPayload,
@@ -63,14 +63,12 @@ export function buildEscPosBuffer(
     // Item title (bold)
     chunks.push(ESC, 0x45, 0x01);
     chunks.push(...line(`${item.quantity}x ${item.name}`));
-    // Bowl selection highlighted in double-height bold
-    chunks.push(GS, 0x21, 0x01);
-    chunks.push(...line(`BOWL: ${item.bowlSelection || 'Classic Clay'}`));
-    chunks.push(GS, 0x21, 0x00);
     chunks.push(ESC, 0x45, 0x00);
 
     if (item.flavors && item.flavors.length > 0) {
+      chunks.push(ESC, 0x45, 0x01, GS, 0x21, 0x01);
       chunks.push(...line(`MIX: ${item.flavors.join(' + ')}`));
+      chunks.push(GS, 0x21, 0x00, ESC, 0x45, 0x00);
     }
     if (item.iceHose) {
       chunks.push(ESC, 0x45, 0x01);
