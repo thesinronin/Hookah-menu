@@ -112,6 +112,89 @@ async function startServer() {
   });
 
   const server = http.createServer(app);
+  const wss = new WebSocketServer({ noServer: true });
+
+  function executeBatchOut(staffName: string): BatchReport {
+    const now = Date.now();
+    const autoClosedSessions: CompletedSession[] = [];
+
+    for (const table of state.tables) {
+      if (table.status !== 'occupied') continue;
+      const seatedAt = table.seatedAt || now;
+      const sub = table.orders.reduce(
+        (s, o) => s + o.unitPrice * o.quantity,
+        0
+      );
+      const tax = sub * TAX_RATE;
+      autoClosedSessions.push({
+        id: `sess-${now}-${table.id}`,
+        tableName: table.name,
+        floor: table.floor,
+        zone: table.zone,
+        partySize: table.partySize || 1,
+        guestName: table.guestName,
+        serverName: table.serverName || staffName,
+        seatedAt,
+        closedAt: now,
+        durationMinutes: Math.max(
+          1,
+          Math.round((now - seatedAt) / 60_000)
+        ),
+        orders: table.orders,
+        subtotal: sub,
+        tax,
+        total: sub + tax,
+      });
+
+      table.status = 'available';
+      table.seatingTier = undefined;
+      table.timeLimitMinutes = undefined;
+      table.partySize = undefined;
+      table.guestName = undefined;
+      table.serverName = undefined;
+      table.seatedAt = undefined;
+      table.lastCoalCheckAt = undefined;
+      table.orders = [];
+      table.updatedAt = now;
+    }
+
+    const allDaySessions = [...autoClosedSessions, ...state.history];
+    const subtotal = allDaySessions.reduce((s, x) => s + x.subtotal, 0);
+    const tax = allDaySessions.reduce((s, x) => s + x.tax, 0);
+    const total = allDaySessions.reduce((s, x) => s + x.total, 0);
+
+    const report: BatchReport = {
+      id: `batch-${now}`,
+      closedAt: now,
+      closedBy: staffName,
+      totalTabs: allDaySessions.length,
+      autoClosedOpenTables: autoClosedSessions.length,
+      subtotal,
+      tax,
+      total,
+      sessions: allDaySessions,
+    };
+
+    state.lastBatchReport = report;
+    state.history = [];
+
+    try {
+      fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('Failed to persist batch out state:', err);
+      scheduleSave();
+    }
+
+    broadcast(wss, { type: 'state:init', snapshot: getSnapshot() });
+    return report;
+  }
+
+  app.post('/api/shift/batch-out', (req, res) => {
+    const rawName = (req.body as { staffName?: unknown } | undefined)?.staffName;
+    const staffName = String(rawName || 'Manager').trim() || 'Manager';
+    const report = executeBatchOut(staffName);
+    res.json({ ok: true, report, snapshot: getSnapshot() });
+  });
 
   if (process.env.NODE_ENV === 'production') {
     const distDir = path.join(__dirname, 'dist');
@@ -132,8 +215,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   }
-
-  const wss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
     const pathname = new URL(request.url || '/', 'http://localhost').pathname;
@@ -428,68 +509,8 @@ async function startServer() {
           }
 
           case 'shift:batchOut': {
-            const staffName = String(msg.staffName || 'Manager');
-            const autoClosedSessions: CompletedSession[] = [];
-
-            for (const table of state.tables) {
-              if (table.status !== 'occupied' || !table.seatedAt) continue;
-              const sub = table.orders.reduce(
-                (s, o) => s + o.unitPrice * o.quantity,
-                0
-              );
-              const tax = sub * TAX_RATE;
-              autoClosedSessions.push({
-                id: `sess-${now}-${table.id}`,
-                tableName: table.name,
-                floor: table.floor,
-                zone: table.zone,
-                partySize: table.partySize || 1,
-                guestName: table.guestName,
-                serverName: table.serverName || staffName,
-                seatedAt: table.seatedAt,
-                closedAt: now,
-                durationMinutes: Math.max(
-                  1,
-                  Math.round((now - table.seatedAt) / 60_000)
-                ),
-                orders: table.orders,
-                subtotal: sub,
-                tax,
-                total: sub + tax,
-              });
-
-              table.status = 'available';
-              table.seatingTier = undefined;
-              table.timeLimitMinutes = undefined;
-              table.partySize = undefined;
-              table.guestName = undefined;
-              table.serverName = undefined;
-              table.seatedAt = undefined;
-              table.lastCoalCheckAt = undefined;
-              table.orders = [];
-              table.updatedAt = now;
-            }
-
-            const allDaySessions = [...autoClosedSessions, ...state.history];
-            const subtotal = allDaySessions.reduce((s, x) => s + x.subtotal, 0);
-            const tax = allDaySessions.reduce((s, x) => s + x.tax, 0);
-            const total = allDaySessions.reduce((s, x) => s + x.total, 0);
-
-            state.lastBatchReport = {
-              id: `batch-${now}`,
-              closedAt: now,
-              closedBy: staffName,
-              totalTabs: allDaySessions.length,
-              autoClosedOpenTables: autoClosedSessions.length,
-              subtotal,
-              tax,
-              total,
-              sessions: allDaySessions,
-            };
-
-            state.history = [];
-            scheduleSave();
-            broadcast(wss, { type: 'state:init', snapshot: getSnapshot() });
+            const staffName = String(msg.staffName || 'Manager').trim() || 'Manager';
+            executeBatchOut(staffName);
             break;
           }
 

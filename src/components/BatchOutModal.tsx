@@ -18,7 +18,7 @@ interface BatchOutModalProps {
   history: CompletedSession[];
   staffName: string;
   onClose: () => void;
-  onConfirmBatchOut: () => void;
+  onConfirmBatchOut: () => Promise<unknown>;
 }
 
 export const BatchOutModal: React.FC<BatchOutModalProps> = ({
@@ -101,7 +101,7 @@ export const BatchOutModal: React.FC<BatchOutModalProps> = ({
         docTitle = doc.title;
       }
 
-      onConfirmBatchOut();
+      await onConfirmBatchOut();
       setDoneResult({
         total: preview.total,
         tabCount: preview.closedSessions.length,

@@ -426,12 +426,105 @@ export function useLoungeSync(staff: StaffProfile) {
     [sendAction]
   );
 
-  const batchOutShift = useCallback(() => {
+  const batchOutShift = useCallback(async (): Promise<BatchReport | null> => {
+    const now = Date.now();
+    const staffName = staffRef.current.name || 'Manager';
+
+    const autoClosedSessions: CompletedSession[] = tables
+      .filter((t) => t.status === 'occupied')
+      .map((t) => {
+        const seatedAt = t.seatedAt || now;
+        const sub = t.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0);
+        const tax = sub * TAX_RATE;
+        return {
+          id: `sess-${now}-${t.id}`,
+          tableName: t.name,
+          floor: t.floor,
+          zone: t.zone,
+          partySize: t.partySize || 1,
+          guestName: t.guestName,
+          serverName: t.serverName || staffName,
+          seatedAt,
+          closedAt: now,
+          durationMinutes: Math.max(1, Math.round((now - seatedAt) / 60_000)),
+          orders: t.orders,
+          subtotal: sub,
+          tax,
+          total: sub + tax,
+        };
+      });
+
+    const allDaySessions = [...autoClosedSessions, ...history];
+    const subtotal = allDaySessions.reduce((s, x) => s + x.subtotal, 0);
+    const tax = allDaySessions.reduce((s, x) => s + x.tax, 0);
+    const total = allDaySessions.reduce((s, x) => s + x.total, 0);
+
+    const optimisticReport: BatchReport = {
+      id: `batch-${now}`,
+      closedAt: now,
+      closedBy: staffName,
+      totalTabs: allDaySessions.length,
+      autoClosedOpenTables: autoClosedSessions.length,
+      subtotal,
+      tax,
+      total,
+      sessions: allDaySessions,
+    };
+
+    // Optimistically close every occupied table and reset shift ledger immediately
+    setTables((prev) =>
+      prev.map((t) =>
+        t.status === 'occupied'
+          ? {
+              ...t,
+              status: 'available',
+              seatingTier: undefined,
+              timeLimitMinutes: undefined,
+              partySize: undefined,
+              guestName: undefined,
+              serverName: undefined,
+              seatedAt: undefined,
+              lastCoalCheckAt: undefined,
+              orders: [],
+              updatedAt: now,
+            }
+          : t
+      )
+    );
+    setHistory([]);
+    setLastBatchReport(optimisticReport);
+
+    try {
+      const res = await fetch('/api/shift/batch-out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffName }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          ok: boolean;
+          report?: BatchReport;
+          snapshot?: LoungeStateSnapshot;
+        };
+        if (data.snapshot && Array.isArray(data.snapshot.tables)) {
+          setTables(data.snapshot.tables);
+          setHistory(data.snapshot.history || []);
+          setSettings(data.snapshot.settings || DEFAULT_SETTINGS);
+          setActiveStaff(data.snapshot.activeStaff || []);
+          setLastBatchReport(data.snapshot.lastBatchReport ?? data.report ?? optimisticReport);
+        }
+        return data.report ?? optimisticReport;
+      }
+    } catch {
+      // Fall back to WebSocket mutation below
+    }
+
     sendAction({
       type: 'shift:batchOut',
-      staffName: staffRef.current.name,
+      staffName,
     });
-  }, [sendAction]);
+    return optimisticReport;
+  }, [tables, history, sendAction]);
 
   const resetDemo = useCallback(() => {
     sendAction({ type: 'state:resetDemo' });

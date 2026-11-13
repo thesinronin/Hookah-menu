@@ -243,6 +243,15 @@ export default function App() {
     checkoutTable(tableId);
   };
 
+  const handleBatchOutShift = async () => {
+    triggerHaptic(24);
+    lastCoalAlertRef.current = {};
+    lastStayAlertRef.current = {};
+    setAlertBanner(null);
+    setSelectedTableId(null);
+    return batchOutShift();
+  };
+
   const selectedTable = tables.find((t) => t.id === selectedTableId) || null;
   const activeStationCount = tables.reduce(
     (sum, t) => sum + t.orders.filter((o) => o.prepStatus !== 'served').length,
@@ -517,7 +526,7 @@ export default function App() {
         history={history}
         staffName={staff.name}
         onClose={() => setIsBatchOutOpen(false)}
-        onConfirmBatchOut={batchOutShift}
+        onConfirmBatchOut={handleBatchOutShift}
       />
     </div>
   );

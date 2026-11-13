@@ -1,0 +1,352 @@
+{
+  "tables": [
+    {
+      "id": "f1-1",
+      "name": "L1",
+      "floor": "Floor 1",
+      "zone": "Lounge",
+      "seats": 4,
+      "shape": "square",
+      "x": 6,
+      "y": 10,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233721
+    },
+    {
+      "id": "f1-2",
+      "name": "L2",
+      "floor": "Floor 1",
+      "zone": "Lounge",
+      "seats": 4,
+      "shape": "square",
+      "x": 38,
+      "y": 10,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "f1-3",
+      "name": "Bar 1",
+      "floor": "Floor 1",
+      "zone": "Bar",
+      "seats": 2,
+      "shape": "round",
+      "x": 70,
+      "y": 10,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "f1-4",
+      "name": "L3",
+      "floor": "Floor 1",
+      "zone": "Lounge",
+      "seats": 6,
+      "shape": "round",
+      "x": 6,
+      "y": 46,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "f1-5",
+      "name": "VIP 1",
+      "floor": "Floor 1",
+      "zone": "VIP",
+      "seats": 8,
+      "shape": "booth",
+      "x": 38,
+      "y": 46,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233721
+    },
+    {
+      "id": "f2-1",
+      "name": "2F-1",
+      "floor": "Floor 2",
+      "zone": "Lounge",
+      "seats": 4,
+      "shape": "square",
+      "x": 8,
+      "y": 12,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "f2-2",
+      "name": "2F-2",
+      "floor": "Floor 2",
+      "zone": "Lounge",
+      "seats": 4,
+      "shape": "square",
+      "x": 54,
+      "y": 12,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "f2-3",
+      "name": "2F-VIP 1",
+      "floor": "Floor 2",
+      "zone": "VIP",
+      "seats": 8,
+      "shape": "booth",
+      "x": 8,
+      "y": 48,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233721
+    },
+    {
+      "id": "f2-4",
+      "name": "2F-VIP 2",
+      "floor": "Floor 2",
+      "zone": "VIP",
+      "seats": 10,
+      "shape": "booth",
+      "x": 54,
+      "y": 48,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "out-1",
+      "name": "Patio 1",
+      "floor": "Outside",
+      "zone": "Patio",
+      "seats": 4,
+      "shape": "round",
+      "x": 8,
+      "y": 12,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233721
+    },
+    {
+      "id": "out-2",
+      "name": "Patio 2",
+      "floor": "Outside",
+      "zone": "Patio",
+      "seats": 4,
+      "shape": "round",
+      "x": 54,
+      "y": 12,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "out-3",
+      "name": "Patio 3",
+      "floor": "Outside",
+      "zone": "Patio",
+      "seats": 6,
+      "shape": "square",
+      "x": 8,
+      "y": 48,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    },
+    {
+      "id": "out-4",
+      "name": "Cabana 1",
+      "floor": "Outside",
+      "zone": "VIP",
+      "seats": 8,
+      "shape": "booth",
+      "x": 54,
+      "y": 48,
+      "status": "available",
+      "orders": [],
+      "updatedAt": 1794583233718
+    }
+  ],
+  "history": [],
+  "settings": {
+    "coalAlertMinutes": 25,
+    "longStayAlertMinutes": 120
+  },
+  "lastBatchReport": {
+    "id": "batch-1794583233721",
+    "closedAt": 1794583233721,
+    "closedBy": "Maya",
+    "totalTabs": 4,
+    "autoClosedOpenTables": 4,
+    "subtotal": 631,
+    "tax": 50.480000000000004,
+    "total": 681.48,
+    "sessions": [
+      {
+        "id": "sess-1794583233721-f1-1",
+        "tableName": "L1",
+        "floor": "Floor 1",
+        "zone": "Lounge",
+        "partySize": 3,
+        "guestName": "Karim",
+        "serverName": "Nadia",
+        "seatedAt": 1794582093718,
+        "closedAt": 1794583233721,
+        "durationMinutes": 19,
+        "orders": [
+          {
+            "id": "ord-seed-1",
+            "menuItemId": "h-downstairs",
+            "name": "Downstairs Hookah",
+            "category": "hookah",
+            "unitPrice": 54,
+            "quantity": 1,
+            "flavors": [
+              "Love 66",
+              "Mint"
+            ],
+            "bowlUpgrade": "Phunnel Bowl",
+            "iceHose": false,
+            "addedBy": "Nadia",
+            "prepStatus": "served",
+            "orderedAt": 1794582153718
+          }
+        ],
+        "subtotal": 54,
+        "tax": 4.32,
+        "total": 58.32
+      },
+      {
+        "id": "sess-1794583233721-f1-5",
+        "tableName": "VIP 1",
+        "floor": "Floor 1",
+        "zone": "VIP",
+        "partySize": 6,
+        "guestName": "Maya Birthday",
+        "serverName": "Nadia",
+        "seatedAt": 1794581193718,
+        "closedAt": 1794583233721,
+        "durationMinutes": 34,
+        "orders": [
+          {
+            "id": "ord-seed-3",
+            "menuItemId": "h-vip-allday",
+            "name": "All Day VIP",
+            "category": "hookah",
+            "unitPrice": 277,
+            "quantity": 1,
+            "flavors": [
+              "Blue Mist",
+              "Lady Killer",
+              "Mint"
+            ],
+            "bowlUpgrade": "Pineapple Head",
+            "iceHose": true,
+            "notes": "Extra ice cubes",
+            "addedBy": "Nadia",
+            "prepStatus": "served",
+            "orderedAt": 1794581253718
+          },
+          {
+            "id": "ord-seed-3-xtra",
+            "menuItemId": "r-xtra-vip-allday",
+            "name": "Xtra Person · All Day VIP",
+            "category": "refill",
+            "unitPrice": 65,
+            "quantity": 2,
+            "notes": "Party of 6 (2 over 4)",
+            "addedBy": "Nadia",
+            "prepStatus": "served",
+            "orderedAt": 1794581253718
+          }
+        ],
+        "subtotal": 407,
+        "tax": 32.56,
+        "total": 439.56
+      },
+      {
+        "id": "sess-1794583233721-f2-3",
+        "tableName": "2F-VIP 1",
+        "floor": "Floor 2",
+        "zone": "VIP",
+        "partySize": 5,
+        "guestName": "Tariq",
+        "serverName": "Sam",
+        "seatedAt": 1794582573718,
+        "closedAt": 1794583233721,
+        "durationMinutes": 11,
+        "orders": [
+          {
+            "id": "ord-seed-5",
+            "menuItemId": "h-vip-onetime",
+            "name": "One Time VIP (2h)",
+            "category": "hookah",
+            "unitPrice": 100,
+            "quantity": 1,
+            "flavors": [
+              "Double Apple",
+              "Mint"
+            ],
+            "bowlUpgrade": "Classic Clay",
+            "iceHose": false,
+            "addedBy": "Sam",
+            "prepStatus": "prepping",
+            "orderedAt": 1794582993718
+          },
+          {
+            "id": "ord-seed-5-xtra",
+            "menuItemId": "r-xtra-vip-onetime",
+            "name": "Xtra Person · One Time VIP",
+            "category": "refill",
+            "unitPrice": 20,
+            "quantity": 1,
+            "notes": "Party of 5 (1 over 4)",
+            "addedBy": "Sam",
+            "prepStatus": "served",
+            "orderedAt": 1794582573718
+          }
+        ],
+        "subtotal": 120,
+        "tax": 9.6,
+        "total": 129.6
+      },
+      {
+        "id": "sess-1794583233721-out-1",
+        "tableName": "Patio 1",
+        "floor": "Outside",
+        "zone": "Patio",
+        "partySize": 2,
+        "guestName": "Elena",
+        "serverName": "Sam",
+        "seatedAt": 1794580473718,
+        "closedAt": 1794583233721,
+        "durationMinutes": 46,
+        "orders": [
+          {
+            "id": "ord-seed-6",
+            "menuItemId": "h-downstairs",
+            "name": "Downstairs Hookah",
+            "category": "hookah",
+            "unitPrice": 50,
+            "quantity": 1,
+            "flavors": [
+              "Watermelon",
+              "Mint"
+            ],
+            "bowlUpgrade": "Classic Clay",
+            "iceHose": false,
+            "addedBy": "Sam",
+            "prepStatus": "served",
+            "orderedAt": 1794580533718
+          }
+        ],
+        "subtotal": 50,
+        "tax": 4,
+        "total": 54
+      }
+    ]
+  }
+}
