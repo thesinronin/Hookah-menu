@@ -673,13 +673,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
               {/* Menu Category Segmented Bar */}
               <div>
-                <div className="grid grid-cols-4 gap-1 rounded-xl bg-[#060913] p-1 border border-cyan-500/20">
+                <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#060913] p-1 border border-cyan-500/20">
                   {(
                     [
                       { id: 'hookah', label: 'Hookah' },
-                      { id: 'refill', label: 'Refills' },
-                      { id: 'drinks', label: 'Drinks' },
-                      { id: 'food', label: 'Bites' },
+                      { id: 'refill', label: 'Refills & Add-ons' },
                     ] as const
                   ).map((cat) => (
                     <button
@@ -733,7 +731,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
                 {table.orders.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-cyan-500/25 px-4 py-6 text-center text-xs text-slate-500">
-                    No items ordered yet. Select a hookah, drink, or bite above.
+                    No items ordered yet. Select a hookah or add-on above.
                   </p>
                 ) : (
                   <div className="divide-y divide-cyan-500/10 rounded-xl border border-cyan-500/20 bg-[#060913]">
