@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#0D1C33" />
+      <stop offset="100%" stop-color="#05070E" />
+    </radialGradient>
+    <linearGradient id="neonCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67E8F9" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+    <linearGradient id="neonMagenta" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F0ABFC" />
+      <stop offset="100%" stop-color="#D946EF" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bgGlow)" />
+  <rect x="28" y="28" width="456" height="456" rx="92" fill="none" stroke="url(#neonCyan)" stroke-width="8" stroke-opacity="0.45" />
+  <polygon points="256,84 404,170 404,342 256,428 108,342 108,170" fill="#080E1D" stroke="url(#neonCyan)" stroke-width="14" stroke-linejoin="round" />
+  <polygon points="256,118 374,186 374,326 256,394 138,326 138,186" fill="none" stroke="#D946EF" stroke-width="4" stroke-opacity="0.55" />
+  <path d="M256 146 C292 192 318 228 318 272 C318 312 290 342 256 342 C222 342 194 312 194 272 C194 242 210 216 226 196 C228 218 238 230 248 232 C240 206 244 174 256 146 Z" fill="url(#neonMagenta)" />
+  <path d="M256 226 C276 250 284 268 284 288 C284 306 272 320 256 320 C240 320 228 306 228 288 C228 268 238 250 256 226 Z" fill="url(#neonCyan)" />
+</svg>

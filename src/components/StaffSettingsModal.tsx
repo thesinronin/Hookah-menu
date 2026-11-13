@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { RotateCcw, Users, Volume2, Wifi, X } from 'lucide-react';
+import { Monitor, RotateCcw, Users, Volume2, Wifi, X } from 'lucide-react';
 import type {
   ActiveStaffMember,
   AlertMode,
@@ -8,6 +8,7 @@ import type {
   StaffRole,
 } from '../types';
 import { triggerTimerAlert, unlockAudioEngine } from '../services/audioAlerts';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface StaffSettingsModalProps {
   visible: boolean;
@@ -15,6 +16,10 @@ interface StaffSettingsModalProps {
   settings: LoungeSettings;
   activeStaff: ActiveStaffMember[];
   connectionState: 'connecting' | 'live' | 'reconnecting';
+  wakeLockSupported: boolean;
+  wakeLockEnabled: boolean;
+  wakeLockActive: boolean;
+  onToggleWakeLock: (enabled: boolean) => void;
   onClose: () => void;
   onSaveProfile: (profile: StaffProfile) => void;
   onUpdateSettings: (settings: LoungeSettings) => void;
@@ -27,6 +32,10 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
   settings,
   activeStaff,
   connectionState,
+  wakeLockSupported,
+  wakeLockEnabled,
+  wakeLockActive,
+  onToggleWakeLock,
   onClose,
   onSaveProfile,
   onUpdateSettings,
@@ -264,6 +273,37 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
                 ))
               )}
             </div>
+          </div>
+
+          {/* Android Shift Controls & Install */}
+          <div className="space-y-2.5 border-t border-cyan-500/20 pt-4">
+            <span className="block text-xs font-medium text-cyan-200/80">
+              Android Device &amp; Shift Mode
+            </span>
+            <button
+              type="button"
+              onClick={() => onToggleWakeLock(!wakeLockEnabled)}
+              className={`flex min-h-[44px] w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition-colors ${
+                wakeLockEnabled
+                  ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-200'
+                  : 'border-cyan-500/25 bg-[#060913] text-slate-300'
+              }`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Monitor className="h-4 w-4 text-cyan-400" />
+                Keep Screen Awake During Shift
+              </span>
+              <span className="font-mono text-[11px]">
+                {!wakeLockSupported
+                  ? 'UNAVAILABLE'
+                  : wakeLockEnabled
+                  ? wakeLockActive
+                    ? 'ACTIVE'
+                    : 'ON'
+                  : 'OFF'}
+              </span>
+            </button>
+            <PWAInstallButton variant="card" />
           </div>
 
           {/* Actions */}

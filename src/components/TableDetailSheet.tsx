@@ -814,7 +814,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
         {/* Sticky Checkout Footer for Occupied Table */}
         {table.status === 'occupied' && !customizingItem && (
-          <div className="border-t border-cyan-500/20 bg-[#060913] px-5 py-4 space-y-3">
+          <div className="border-t border-cyan-500/20 bg-[#060913] px-5 py-4 pb-safe space-y-3">
             <div className="space-y-1 text-xs">
               <div className="flex justify-between text-slate-400">
                 <span>Subtotal</span>

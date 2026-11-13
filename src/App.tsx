@@ -26,6 +26,9 @@ import { TableEditorModal } from './components/TableEditorModal';
 import { StaffSettingsModal } from './components/StaffSettingsModal';
 import { GoogleDocsExportModal } from './components/GoogleDocsExportModal';
 import { BatchOutModal } from './components/BatchOutModal';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { triggerHaptic, useAndroidWakeLock } from './hooks/useAndroidWakeLock';
 
 type Tab = 'tables' | 'station' | 'analytics';
 
@@ -99,6 +102,8 @@ export default function App() {
     batchOutShift,
     resetDemo,
   } = useLoungeSync(staff);
+
+  const wakeLock = useAndroidWakeLock();
 
   const lastCoalAlertRef = useRef<Record<string, number>>({});
   const lastStayAlertRef = useRef<Record<string, number>>({});
@@ -206,6 +211,7 @@ export default function App() {
     seatingTier?: SeatingTierId,
     timeLimitMinutes?: number
   ) => {
+    triggerHaptic(14);
     delete lastCoalAlertRef.current[tableId];
     delete lastStayAlertRef.current[tableId];
     seatTable(
@@ -219,6 +225,7 @@ export default function App() {
   };
 
   const handleRefreshCoals = (tableId: string) => {
+    triggerHaptic(12);
     delete lastCoalAlertRef.current[tableId];
     if (alertBanner?.tableId === tableId && alertBanner.kind === 'coal') {
       setAlertBanner(null);
@@ -227,6 +234,7 @@ export default function App() {
   };
 
   const handleCheckoutTable = (tableId: string) => {
+    triggerHaptic(20);
     delete lastCoalAlertRef.current[tableId];
     delete lastStayAlertRef.current[tableId];
     if (alertBanner?.tableId === tableId) {
@@ -294,14 +302,15 @@ export default function App() {
             </button>
           </nav>
 
-          <div className="flex items-center shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <PWAInstallButton variant="header" />
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
               className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-cyan-500/30 bg-[#0B101D] px-3 py-1.5 text-xs font-semibold text-cyan-100 transition-colors hover:border-cyan-400/70 hover:bg-[#11192D] whitespace-nowrap shrink-0"
             >
               <Settings2 className="h-3.5 w-3.5 text-cyan-400" />
-              <span className="max-w-[110px] truncate">{staff.name}</span>
+              <span className="max-w-[96px] sm:max-w-[110px] truncate">{staff.name}</span>
             </button>
           </div>
         </div>
@@ -407,12 +416,15 @@ export default function App() {
       {/* Mobile Bottom Thumb-Zone Navigation */}
       <nav
         aria-label="Mobile navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 grid h-[60px] grid-cols-3 border-t border-cyan-500/20 bg-[#070A15]/95 backdrop-blur-md"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 grid min-h-[60px] pb-safe grid-cols-3 border-t border-cyan-500/20 bg-[#070A15]/95 backdrop-blur-md"
       >
         <button
           type="button"
-          onClick={() => setTab('tables')}
-          className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold font-display tracking-wide ${
+          onClick={() => {
+            triggerHaptic(8);
+            setTab('tables');
+          }}
+          className={`flex flex-col items-center justify-center gap-1 py-2 text-[11px] font-semibold font-display tracking-wide ${
             tab === 'tables' ? 'text-cyan-300' : 'text-slate-400'
           }`}
         >
@@ -422,8 +434,11 @@ export default function App() {
 
         <button
           type="button"
-          onClick={() => setTab('station')}
-          className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold font-display tracking-wide ${
+          onClick={() => {
+            triggerHaptic(8);
+            setTab('station');
+          }}
+          className={`flex flex-col items-center justify-center gap-1 py-2 text-[11px] font-semibold font-display tracking-wide ${
             tab === 'station' ? 'text-cyan-300' : 'text-slate-400'
           }`}
         >
@@ -435,8 +450,11 @@ export default function App() {
 
         <button
           type="button"
-          onClick={() => setTab('analytics')}
-          className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold font-display tracking-wide ${
+          onClick={() => {
+            triggerHaptic(8);
+            setTab('analytics');
+          }}
+          className={`flex flex-col items-center justify-center gap-1 py-2 text-[11px] font-semibold font-display tracking-wide ${
             tab === 'analytics' ? 'text-cyan-300' : 'text-slate-400'
           }`}
         >
@@ -444,6 +462,8 @@ export default function App() {
           <span>Shift</span>
         </button>
       </nav>
+
+      <OfflineIndicator />
 
       {/* Modals & Sheets */}
       <TableDetailSheet
@@ -472,6 +492,10 @@ export default function App() {
         settings={settings}
         activeStaff={activeStaff}
         connectionState={connectionState}
+        wakeLockSupported={wakeLock.supported}
+        wakeLockEnabled={wakeLock.enabled}
+        wakeLockActive={wakeLock.active}
+        onToggleWakeLock={wakeLock.setEnabled}
         onClose={() => setIsSettingsOpen(false)}
         onSaveProfile={setStaff}
         onUpdateSettings={updateSettings}
