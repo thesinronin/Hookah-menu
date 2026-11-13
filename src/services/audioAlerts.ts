@@ -1,6 +1,6 @@
 import type { AlertMode } from '../types';
 
-export type SoundKind = 'coal' | 'longstay' | 'order';
+export type SoundKind = 'longstay' | 'order';
 
 let sharedAudioCtx: AudioContext | null = null;
 
@@ -40,7 +40,6 @@ function playTwoToneChime(kind: SoundKind) {
   }
 
   const tones: Record<SoundKind, [number, number]> = {
-    coal: [880, 1174.66], // A5 -> D6 bright chime
     longstay: [659.25, 523.25], // E5 -> C5 reminder chime
     order: [783.99, 1046.5], // G5 -> C6 station ping
   };

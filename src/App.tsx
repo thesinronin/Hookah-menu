@@ -9,7 +9,6 @@ import {
   X,
 } from 'lucide-react';
 import {
-  COAL_REPEAT_MINUTES,
   getTableSeatingTier,
   getVipUpgradeOption,
 } from './data/menu';
@@ -41,7 +40,6 @@ import { GoogleDocsExportModal } from './components/GoogleDocsExportModal';
 import { BatchOutModal } from './components/BatchOutModal';
 import { FlavorManagerModal } from './components/FlavorManagerModal';
 import { KitchenPrintModal } from './components/KitchenPrintModal';
-import { PinPromptModal } from './components/PinPromptModal';
 import { ThermalReceiptPrintView } from './components/ThermalReceiptPrintView';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -80,7 +78,7 @@ interface ActiveAlertBanner {
   id: string;
   tableId: string;
   title: string;
-  kind: 'coal' | 'longstay' | 'expiring' | 'order';
+  kind: 'longstay' | 'expiring' | 'order';
 }
 
 export default function App() {
@@ -109,10 +107,6 @@ export default function App() {
     useState<KitchenTicketPayload | null>(null);
   const [systemPrintWidth, setSystemPrintWidth] =
     useState<PrinterPaperWidth>('80mm');
-  const [pendingPinAction, setPendingPinAction] = useState<{
-    actionLabel: string;
-    action: () => void;
-  } | null>(null);
   const [alertBanner, setAlertBanner] = useState<ActiveAlertBanner | null>(null);
 
   const {
@@ -126,7 +120,6 @@ export default function App() {
     seatTable,
     addOrder,
     updateOrderQty,
-    refreshCoals,
     advancePrep,
     checkoutTable,
     transferTable,
@@ -134,6 +127,7 @@ export default function App() {
     upgradeToVip,
     updateOrderFlavors,
     updateTableNumber,
+    updatePartySize,
     addFlavor,
     toggleFlavorAvailability,
     removeFlavor,
@@ -147,7 +141,6 @@ export default function App() {
 
   const wakeLock = useAndroidWakeLock();
 
-  const lastCoalAlertRef = useRef<Record<string, number>>({});
   const lastStayAlertRef = useRef<Record<string, number>>({});
   const lastWarningAlertRef = useRef<Record<string, number>>({});
   const prevQueuedCountRef = useRef<number | null>(null);
@@ -170,32 +163,12 @@ export default function App() {
     return () => window.removeEventListener('pointerdown', unlock);
   }, []);
 
-  // Live timer audio alert monitor (Coal rotation + Long stay)
+  // Live timer audio alert monitor (Long stay & 15m expiry warnings)
   useEffect(() => {
     const checkTimers = () => {
       const now = Date.now();
       for (const table of tables) {
         if (table.status !== 'occupied' || !table.seatedAt) continue;
-
-        if (table.lastCoalCheckAt) {
-          const coalMins = (now - table.lastCoalCheckAt) / 60_000;
-          const lastAlert = lastCoalAlertRef.current[table.id] || 0;
-          if (
-            coalMins >= settings.coalAlertMinutes &&
-            now - lastAlert >= COAL_REPEAT_MINUTES * 60_000
-          ) {
-            lastCoalAlertRef.current[table.id] = now;
-            const msg = `Coal check due for ${table.floor}, ${table.name}`;
-            triggerTimerAlert('coal', msg, staff.alertMode);
-            setAlertBanner({
-              id: `coal-${table.id}-${now}`,
-              tableId: table.id,
-              title: msg,
-              kind: 'coal',
-            });
-            break;
-          }
-        }
 
         const stayMins = (now - table.seatedAt) / 60_000;
         const stayLimit = table.timeLimitMinutes ?? settings.longStayAlertMinutes;
@@ -315,15 +288,6 @@ export default function App() {
       printedAt: Date.now(),
       items,
     };
-  };
-
-  const requireManagerPin = (actionLabel: string, action: () => void) => {
-    const pin = (settings.managerPin || '').trim();
-    if (!pin) {
-      action();
-      return;
-    }
-    setPendingPinAction({ actionLabel, action });
   };
 
   const getPrintableOrders = (
@@ -460,7 +424,6 @@ export default function App() {
     tableNumber?: string
   ) => {
     triggerHaptic(14);
-    delete lastCoalAlertRef.current[tableId];
     delete lastStayAlertRef.current[tableId];
     delete lastWarningAlertRef.current[tableId];
     seatTable(
@@ -495,15 +458,6 @@ export default function App() {
     }
   };
 
-  const handleRefreshCoals = (tableId: string) => {
-    triggerHaptic(12);
-    delete lastCoalAlertRef.current[tableId];
-    if (alertBanner?.tableId === tableId && alertBanner.kind === 'coal') {
-      setAlertBanner(null);
-    }
-    refreshCoals(tableId);
-  };
-
   const handleCheckoutTable = (
     tableId: string,
     payment?: {
@@ -514,7 +468,6 @@ export default function App() {
     }
   ) => {
     triggerHaptic(20);
-    delete lastCoalAlertRef.current[tableId];
     delete lastStayAlertRef.current[tableId];
     delete lastWarningAlertRef.current[tableId];
     if (alertBanner?.tableId === tableId) {
@@ -538,7 +491,6 @@ export default function App() {
 
   const handleBatchOutShift = async () => {
     triggerHaptic(24);
-    lastCoalAlertRef.current = {};
     lastStayAlertRef.current = {};
     lastWarningAlertRef.current = {};
     setAlertBanner(null);
@@ -554,16 +506,16 @@ export default function App() {
 
   return (
     <>
-      <div className="min-h-screen bg-transparent text-slate-100 pb-20 md:pb-8">
+      <div className="min-h-screen bg-transparent text-slate-100 pb-16 md:pb-8">
       {/* 3-Zone Top Bar */}
-      <header className="sticky top-0 z-30 border-b border-cyan-500/20 bg-[#05070E]/90 backdrop-blur-md">
-        <div className="mx-auto flex h-[52px] md:h-16 max-w-7xl items-center justify-between gap-8 px-4 sm:px-6">
+      <header className="sticky top-0 z-30 pt-safe border-b border-cyan-500/20 bg-[#05070E]/90 backdrop-blur-md">
+        <div className="mx-auto flex h-11 md:h-14 max-w-7xl items-center justify-between gap-2 sm:gap-8 px-3 sm:px-6">
           <button
             type="button"
             onClick={() => setTab('tables')}
-            className="inline-flex items-center gap-2 text-lg font-bold tracking-wider text-cyan-300 whitespace-nowrap shrink-0 font-display drop-shadow-[0_0_10px_rgba(34,211,238,0.45)]"
+            className="inline-flex items-center gap-1.5 text-base md:text-lg font-bold tracking-wider text-cyan-300 whitespace-nowrap shrink-0 font-display drop-shadow-[0_0_10px_rgba(34,211,238,0.45)]"
           >
-            <span className="h-2.5 w-2.5 rotate-45 bg-fuchsia-500 shadow-[0_0_10px_rgba(217,70,239,0.9)]" />
+            <span className="h-2 w-2 md:h-2.5 md:w-2.5 rotate-45 bg-fuchsia-500 shadow-[0_0_10px_rgba(217,70,239,0.9)]" />
             SIN-OS
           </button>
 
@@ -606,25 +558,25 @@ export default function App() {
             </button>
           </nav>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <PWAInstallButton variant="header" />
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-cyan-500/30 bg-[#0B101D] px-3 py-1.5 text-xs font-semibold text-cyan-100 transition-colors hover:border-cyan-400/70 hover:bg-[#11192D] whitespace-nowrap shrink-0"
+              className="inline-flex min-h-[32px] md:min-h-[40px] items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-[#0B101D] px-2.5 sm:px-3 py-1 text-[11px] md:text-xs font-semibold text-cyan-100 transition-colors hover:border-cyan-400/70 hover:bg-[#11192D] whitespace-nowrap shrink-0"
             >
               <Settings2 className="h-3.5 w-3.5 text-cyan-400" />
-              <span className="max-w-[96px] sm:max-w-[110px] truncate">{staff.name}</span>
+              <span className="max-w-[76px] sm:max-w-[110px] truncate">{staff.name}</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Viewport */}
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 pt-4 sm:pt-6">
+      <main className="mx-auto max-w-7xl px-3 sm:px-6 pt-2.5 sm:pt-5">
         {alertBanner && (
           <div
-            className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs sm:text-sm ${
+            className={`mb-2.5 sm:mb-4 flex flex-wrap items-center justify-between gap-2 sm:gap-3 rounded-xl border px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm ${
               alertBanner.kind === 'longstay'
                 ? 'border-fuchsia-500/50 bg-fuchsia-500/10 cyber-glow-magenta'
                 : alertBanner.kind === 'order'
@@ -653,16 +605,6 @@ export default function App() {
               <span className="font-semibold">{alertBanner.title}</span>
             </div>
             <div className="flex items-center gap-2">
-              {alertBanner.kind === 'coal' && alertBanner.tableId && (
-                <button
-                  type="button"
-                  onClick={() => handleRefreshCoals(alertBanner.tableId)}
-                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-300 whitespace-nowrap"
-                >
-                  <Flame className="h-3.5 w-3.5" />
-                  Coals Done
-                </button>
-              )}
               {(alertBanner.kind === 'longstay' ||
                 alertBanner.kind === 'expiring') &&
                 alertBanner.tableId &&
@@ -712,16 +654,13 @@ export default function App() {
               setIsEditorOpen(true);
             }}
             onMoveTable={moveTable}
-            onRequireManagerPin={requireManagerPin}
           />
         )}
 
         {tab === 'station' && (
           <HookahStationScreen
             tables={tables}
-            settings={settings}
             onAdvancePrep={advancePrep}
-            onRefreshCoals={handleRefreshCoals}
             onOpenFlavorManager={() => setIsFlavorManagerOpen(true)}
             onPrintOrder={(table, order) => openKitchenPrint(table, [order])}
             onQuickPrintOrder={(table, order) => handleQuickPrint(table, [order])}
@@ -737,11 +676,7 @@ export default function App() {
               setExportBatchTarget(batch ?? null);
               setIsExportDocsOpen(true);
             }}
-            onOpenBatchOut={() =>
-              requireManagerPin('close all tables & batch out', () =>
-                setIsBatchOutOpen(true)
-              )
-            }
+            onOpenBatchOut={() => setIsBatchOutOpen(true)}
           />
         )}
       </main>
@@ -749,7 +684,7 @@ export default function App() {
       {/* Mobile Bottom Thumb-Zone Navigation */}
       <nav
         aria-label="Mobile navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 grid min-h-[60px] pb-safe grid-cols-3 border-t border-cyan-500/20 bg-[#070A15]/95 backdrop-blur-md"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 grid min-h-[48px] pb-safe grid-cols-3 border-t border-cyan-500/20 bg-[#070A15]/95 backdrop-blur-md"
       >
         <button
           type="button"
@@ -757,11 +692,11 @@ export default function App() {
             triggerHaptic(8);
             setTab('tables');
           }}
-          className={`flex flex-col items-center justify-center gap-1 py-2 text-[11px] font-semibold font-display tracking-wide ${
+          className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold font-display tracking-wide ${
             tab === 'tables' ? 'text-cyan-300' : 'text-slate-400'
           }`}
         >
-          <LayoutGrid className="h-5 w-5" />
+          <LayoutGrid className="h-4 w-4" />
           <span>Tables</span>
         </button>
 
@@ -771,11 +706,11 @@ export default function App() {
             triggerHaptic(8);
             setTab('station');
           }}
-          className={`flex flex-col items-center justify-center gap-1 py-2 text-[11px] font-semibold font-display tracking-wide ${
+          className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold font-display tracking-wide ${
             tab === 'station' ? 'text-cyan-300' : 'text-slate-400'
           }`}
         >
-          <Flame className="h-5 w-5" />
+          <Flame className="h-4 w-4" />
           <span>
             Station{activeStationCount > 0 ? ` (${activeStationCount})` : ''}
           </span>
@@ -787,11 +722,11 @@ export default function App() {
             triggerHaptic(8);
             setTab('analytics');
           }}
-          className={`flex flex-col items-center justify-center gap-1 py-2 text-[11px] font-semibold font-display tracking-wide ${
+          className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold font-display tracking-wide ${
             tab === 'analytics' ? 'text-cyan-300' : 'text-slate-400'
           }`}
         >
-          <BarChart3 className="h-5 w-5" />
+          <BarChart3 className="h-4 w-4" />
           <span>Shift</span>
         </button>
       </nav>
@@ -810,9 +745,9 @@ export default function App() {
         onUpdateQty={updateOrderQty}
         onUpdateOrderFlavors={updateOrderFlavors}
         onUpdateTableNumber={updateTableNumber}
+        onUpdatePartySize={updatePartySize}
         onPrintKitchenTicket={openKitchenPrint}
         onQuickPrintKitchenTicket={handleQuickPrint}
-        onRefreshCoals={handleRefreshCoals}
         onCheckoutTable={handleCheckoutTable}
         onTransferTable={(fromId, toId, upgrade) => {
           triggerHaptic(16);
@@ -821,7 +756,6 @@ export default function App() {
         }}
         onUpgradeToVip={handleUpgradeToVip}
         onOpenFlavorManager={() => setIsFlavorManagerOpen(true)}
-        onRequireManagerPin={requireManagerPin}
       />
 
       <TableEditorModal
@@ -829,7 +763,10 @@ export default function App() {
         table={editingTable}
         defaultFloor={selectedFloor}
         onClose={() => setIsEditorOpen(false)}
-        onSave={saveTableLayout}
+        onSave={(data) => {
+          saveTableLayout(data);
+          setSelectedFloor(data.floor);
+        }}
         onDelete={deleteTable}
       />
 
@@ -892,18 +829,6 @@ export default function App() {
               kitchenPrintMeta.orderIds
             );
           }
-        }}
-      />
-
-      <PinPromptModal
-        visible={Boolean(pendingPinAction)}
-        expectedPin={settings.managerPin || ''}
-        actionLabel={pendingPinAction?.actionLabel || ''}
-        onClose={() => setPendingPinAction(null)}
-        onSuccess={() => {
-          const run = pendingPinAction?.action;
-          setPendingPinAction(null);
-          run?.();
         }}
       />
       </div>

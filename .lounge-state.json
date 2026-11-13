@@ -22,9 +22,39 @@
       "shape": "square",
       "x": 38,
       "y": 10,
-      "status": "available",
-      "orders": [],
-      "updatedAt": 1794587909859
+      "status": "occupied",
+      "orders": [
+        {
+          "id": "ord-1794591545916-pcmql",
+          "menuItemId": "h-downstairs",
+          "name": "Downstairs Hookah",
+          "category": "hookah",
+          "unitPrice": 50,
+          "quantity": 1,
+          "iceHose": false,
+          "prepStatus": "queued",
+          "orderedAt": 1794591545916,
+          "addedBy": "Server 1"
+        },
+        {
+          "id": "ord-1794591545916-29jok-xtra",
+          "menuItemId": "r-xtra-downstairs",
+          "name": "Xtra Person · Downstairs",
+          "category": "refill",
+          "unitPrice": 10,
+          "quantity": 3,
+          "notes": "7 total (3 extra)",
+          "prepStatus": "served",
+          "orderedAt": 1794591545916,
+          "addedBy": "Server 1"
+        }
+      ],
+      "updatedAt": 1794591545621,
+      "seatingTier": "downstairs",
+      "partySize": 7,
+      "serverName": "Server 1",
+      "seatedAt": 1794591545621,
+      "lastCoalCheckAt": 1794591545621
     },
     {
       "id": "f1-3",
@@ -178,8 +208,7 @@
     "kitchenPrinterIp": "",
     "kitchenPrinterPort": 9100,
     "kitchenPrinterWidth": "80mm",
-    "autoPrintKitchenTicket": false,
-    "managerPin": "2468"
+    "autoPrintKitchenTicket": false
   },
   "lastBatchReport": {
     "id": "batch-1794587909919",
@@ -383,62 +412,102 @@
     {
       "id": "flv-1",
       "name": "Double Apple",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-2",
       "name": "Mint",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-3",
       "name": "Blue Mist",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-4",
       "name": "Love 66",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-5",
       "name": "Lady Killer",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-6",
       "name": "Grape Mint",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-7",
       "name": "Watermelon",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-8",
       "name": "Peach",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-9",
       "name": "Pan Raas",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-10",
       "name": "Lemon Mint",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-11",
       "name": "Mango",
-      "available": true
+      "available": true,
+      "category": "flavor"
     },
     {
       "id": "flv-12",
       "name": "Gummy Bear",
-      "available": true
+      "available": true,
+      "category": "flavor"
+    },
+    {
+      "id": "bld-1",
+      "name": "Berry Frost",
+      "available": true,
+      "category": "blend",
+      "recipe": "Blue Mist + Mint"
+    },
+    {
+      "id": "bld-2",
+      "name": "Sweet Apple Chill",
+      "available": true,
+      "category": "blend",
+      "recipe": "Double Apple + Mint"
+    },
+    {
+      "id": "bld-3",
+      "name": "Tropical Sunset",
+      "available": true,
+      "category": "blend",
+      "recipe": "Mango + Peach + Watermelon"
+    },
+    {
+      "id": "bld-4",
+      "name": "Sin City Special",
+      "available": true,
+      "category": "blend",
+      "recipe": "Love 66 + Lady Killer + Mint"
     }
   ]
 }

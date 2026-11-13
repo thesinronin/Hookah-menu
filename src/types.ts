@@ -24,10 +24,14 @@ export interface MenuItem {
   description?: string;
 }
 
+export type FlavorCategory = 'flavor' | 'blend';
+
 export interface FlavorOption {
   id: string;
   name: string;
   available: boolean;
+  category?: FlavorCategory;
+  recipe?: string;
 }
 
 export interface OrderItem {
@@ -113,7 +117,6 @@ export interface LoungeSettings {
   kitchenPrinterPort?: number;
   kitchenPrinterWidth?: PrinterPaperWidth;
   autoPrintKitchenTicket?: boolean;
-  managerPin?: string;
 }
 
 export interface KitchenTicketItem {

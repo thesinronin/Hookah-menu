@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Clock, Flame } from 'lucide-react';
+import { Clock } from 'lucide-react';
 
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -14,8 +14,6 @@ export function formatDuration(ms: number): string {
 
 interface TimerDisplayProps {
   seatedAt: number;
-  lastCoalCheckAt?: number;
-  coalAlertMinutes: number;
   longStayAlertMinutes: number;
   timeLimitMinutes?: number;
   compact?: boolean;
@@ -23,8 +21,6 @@ interface TimerDisplayProps {
 
 export const TimerDisplay: React.FC<TimerDisplayProps> = ({
   seatedAt,
-  lastCoalCheckAt,
-  coalAlertMinutes,
   longStayAlertMinutes,
   timeLimitMinutes,
   compact = false,
@@ -38,9 +34,6 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
 
   const elapsedMs = now - seatedAt;
   const elapsedMins = elapsedMs / 60_000;
-  const coalElapsedMins = lastCoalCheckAt
-    ? (now - lastCoalCheckAt) / 60_000
-    : 0;
 
   const effectiveLimit = timeLimitMinutes ?? longStayAlertMinutes;
   const isOverLimit = elapsedMins >= effectiveLimit;
@@ -52,8 +45,6 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
     !isOverLimit &&
     remainingMins !== null &&
     remainingMins <= 15;
-  const isCoalDue =
-    lastCoalCheckAt !== undefined && coalElapsedMins >= coalAlertMinutes;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -80,13 +71,6 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
           isOverLimit && <span className="font-sans font-medium">· Long stay</span>
         )}
       </span>
-
-      {isCoalDue && (
-        <span className="inline-flex items-center gap-1 font-mono font-semibold text-amber-400 tabular-nums">
-          <Flame className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-          Coals due ({Math.floor(coalElapsedMins)}m)
-        </span>
-      )}
     </div>
   );
 };

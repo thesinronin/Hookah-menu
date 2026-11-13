@@ -31,8 +31,22 @@
   }
 }
 
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.modal-safe-panel {
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem);
+}
+
+@media (min-width: 640px) {
+  .modal-safe-panel {
+    max-height: 88dvh;
+  }
 }
 
 /* Cyberpunk structural surfaces & neon edge highlights */

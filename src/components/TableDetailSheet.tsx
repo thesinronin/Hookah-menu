@@ -4,7 +4,6 @@ import {
   Check,
   CheckCircle2,
   Crown,
-  Flame,
   Minus,
   Pencil,
   Play,
@@ -53,9 +52,9 @@ interface TableDetailSheetProps {
   onUpdateQty: (tableId: string, orderId: string, delta: number) => void;
   onUpdateOrderFlavors: (tableId: string, orderId: string, flavors: string[]) => void;
   onUpdateTableNumber: (tableId: string, tableNumber: string) => void;
+  onUpdatePartySize: (tableId: string, partySize: number) => void;
   onPrintKitchenTicket: (table: LoungeTable, orders?: OrderItem[]) => void;
   onQuickPrintKitchenTicket: (table: LoungeTable, orders?: OrderItem[]) => void;
-  onRefreshCoals: (tableId: string) => void;
   onCheckoutTable: (
     tableId: string,
     payment?: {
@@ -68,7 +67,6 @@ interface TableDetailSheetProps {
   onTransferTable: (fromTableId: string, toTableId: string, upgradeToVip: boolean) => void;
   onUpgradeToVip: (tableId: string) => void;
   onOpenFlavorManager: () => void;
-  onRequireManagerPin: (actionLabel: string, action: () => void) => void;
 }
 
 export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
@@ -82,14 +80,13 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   onUpdateQty,
   onUpdateOrderFlavors,
   onUpdateTableNumber,
+  onUpdatePartySize,
   onPrintKitchenTicket,
   onQuickPrintKitchenTicket,
-  onRefreshCoals,
   onCheckoutTable,
   onTransferTable,
   onUpgradeToVip,
   onOpenFlavorManager,
-  onRequireManagerPin,
 }) => {
   const [guestName, setGuestName] = useState('');
   const [seatTableNumber, setSeatTableNumber] = useState('');
@@ -102,7 +99,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   const [splitCashInput, setSplitCashInput] = useState('');
   const [splitWays, setSplitWays] = useState(1);
   const [seatingTier, setSeatingTier] = useState<SeatingTierId>('downstairs');
-  const [extraPeopleCount, setExtraPeopleCount] = useState(0);
+  const [seatPartySize, setSeatPartySize] = useState(4);
   const [addExtraCount, setAddExtraCount] = useState(1);
   const [seatIceHose, setSeatIceHose] = useState(false);
   const [seatUpgradeVip, setSeatUpgradeVip] = useState(false);
@@ -128,7 +125,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
         : table?.zone === 'VIP'
         ? 'vip_onetime'
         : 'downstairs';
-    setExtraPeopleCount(0);
+    const defaultSize =
+      defaultTier === 'bar_onetime'
+        ? 1
+        : Math.max(1, Math.min(20, table?.seats || 4));
+    setSeatPartySize(defaultSize);
     setAddExtraCount(1);
     setGuestName('');
     setSeatTableNumber(table?.tableNumber || '');
@@ -148,7 +149,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
     setCustomizingItem(null);
     setEditingOrderForFlavors(null);
     setEditingFlavorsDraft([]);
-  }, [table?.id, table?.zone]);
+  }, [table?.id, table?.zone, table?.seats]);
 
   useEffect(() => {
     setTableNumDraft(table?.tableNumber || '');
@@ -180,43 +181,83 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
     });
   };
 
+  const renderFlavorButton = (
+    flv: FlavorOption,
+    selected: string[],
+    setter: React.Dispatch<React.SetStateAction<string[]>>
+  ) => {
+    const active = selected.includes(flv.name);
+    const disabled = !flv.available && !active;
+    return (
+      <button
+        key={flv.id}
+        type="button"
+        disabled={disabled}
+        onClick={() => toggleFlavorInList(flv.name, setter)}
+        className={`flex min-h-[44px] items-center justify-between gap-1.5 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-colors ${
+          active
+            ? 'border-fuchsia-400 bg-fuchsia-500/15 text-fuchsia-200'
+            : !flv.available
+            ? 'border-amber-500/20 bg-[#060913]/60 text-slate-500 cursor-not-allowed'
+            : flv.category === 'blend'
+            ? 'border-fuchsia-500/25 bg-[#060913] text-slate-200 hover:border-fuchsia-400/55'
+            : 'border-cyan-500/20 bg-[#060913] text-slate-300 hover:border-cyan-400/50'
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <span className={`block truncate ${!flv.available ? 'line-through' : ''}`}>
+            {flv.name}
+          </span>
+          {flv.recipe && (
+            <span className="block truncate text-[10px] font-normal text-slate-400">
+              {flv.recipe}
+            </span>
+          )}
+        </div>
+        {active ? (
+          <Check className="h-3.5 w-3.5 shrink-0 text-fuchsia-400" />
+        ) : !flv.available ? (
+          <span className="shrink-0 text-[9px] font-mono uppercase text-amber-400/90">
+            Out
+          </span>
+        ) : null}
+      </button>
+    );
+  };
+
   const renderFlavorPickerGrid = (
     selected: string[],
     setter: React.Dispatch<React.SetStateAction<string[]>>
-  ) => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {flavors.map((flv) => {
-        const active = selected.includes(flv.name);
-        const disabled = !flv.available && !active;
-        return (
-          <button
-            key={flv.id}
-            type="button"
-            disabled={disabled}
-            onClick={() => toggleFlavorInList(flv.name, setter)}
-            className={`flex min-h-[44px] items-center justify-between gap-1.5 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-colors ${
-              active
-                ? 'border-fuchsia-400 bg-fuchsia-500/15 text-fuchsia-200'
-                : !flv.available
-                ? 'border-amber-500/20 bg-[#060913]/60 text-slate-500 cursor-not-allowed'
-                : 'border-cyan-500/20 bg-[#060913] text-slate-300 hover:border-cyan-400/50'
-            }`}
-          >
-            <span className={`truncate ${!flv.available ? 'line-through' : ''}`}>
-              {flv.name}
+  ) => {
+    const singleFlavors = flavors.filter((f) => f.category !== 'blend');
+    const blendFlavors = flavors.filter((f) => f.category === 'blend');
+
+    return (
+      <div className="space-y-3.5">
+        {blendFlavors.length > 0 && (
+          <div className="space-y-2">
+            <span className="block text-[11px] font-bold text-fuchsia-300 font-display tracking-wide">
+              Blends
             </span>
-            {active ? (
-              <Check className="h-3.5 w-3.5 shrink-0 text-fuchsia-400" />
-            ) : !flv.available ? (
-              <span className="shrink-0 text-[9px] font-mono uppercase text-amber-400/90">
-                Out
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
-  );
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {blendFlavors.map((flv) => renderFlavorButton(flv, selected, setter))}
+            </div>
+          </div>
+        )}
+
+        <div className={blendFlavors.length > 0 ? 'space-y-2 border-t border-cyan-500/15 pt-3' : 'space-y-2'}>
+          {blendFlavors.length > 0 && (
+            <span className="block text-[11px] font-bold text-cyan-300 font-display tracking-wide">
+              Single Flavors
+            </span>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {singleFlavors.map((flv) => renderFlavorButton(flv, selected, setter))}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const getEffectiveMenuPrice = (item: MenuItem): number => {
     if (item.id === 'r1') return activeTier.refillPrice;
@@ -314,11 +355,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-stretch md:justify-end bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end md:items-stretch md:justify-end bg-black/70 backdrop-blur-sm pt-safe pb-safe md:p-0"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[92vh] md:max-h-full w-full md:max-w-lg flex-col rounded-t-3xl md:rounded-none md:border-l border-cyan-500/25 bg-[#0A0F1C] shadow-[0_0_40px_rgba(6,182,212,0.16)]"
+        className="flex modal-safe-panel md:max-h-full w-full md:max-w-lg flex-col rounded-t-3xl md:rounded-none md:border-l border-cyan-500/25 bg-[#0A0F1C] shadow-[0_0_40px_rgba(6,182,212,0.16)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-cyan-500/40 md:hidden" />
@@ -346,8 +387,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
               <div className="mt-2">
                 <TimerDisplay
                   seatedAt={table.seatedAt}
-                  lastCoalCheckAt={table.lastCoalCheckAt}
-                  coalAlertMinutes={settings.coalAlertMinutes}
                   longStayAlertMinutes={settings.longStayAlertMinutes}
                   timeLimitMinutes={
                     table.timeLimitMinutes ?? activeTier.timeLimitMinutes
@@ -432,7 +471,9 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                         onClick={() => {
                           setSeatingTier(tier.id);
                           if (tier.perPersonService) {
-                            setExtraPeopleCount(0);
+                            setSeatPartySize(1);
+                          } else if (seatPartySize < 1) {
+                            setSeatPartySize(tier.includedPeople);
                           }
                           if (!getVipUpgradeOption(tier.id)) {
                             setSeatUpgradeVip(false);
@@ -467,10 +508,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                 const chosen = SEATING_TIERS[seatingTier];
                 const seatUpgradeOpt = getVipUpgradeOption(chosen.id);
                 const upgradeVipApplied = Boolean(seatUpgradeOpt && seatUpgradeVip);
-                const extraPeople = chosen.perPersonService ? 0 : extraPeopleCount;
-                const computedPartySize = chosen.perPersonService
-                  ? 1
-                  : chosen.includedPeople + extraPeople;
+                const computedPartySize = Math.max(1, seatPartySize);
+                const extraPeople = Math.max(
+                  0,
+                  computedPartySize - chosen.includedPeople
+                );
                 const baseTabPrice = chosen.basePrice;
                 const extraTotal = extraPeople * chosen.extraPersonPrice;
                 const iceTotal = seatIceHose ? chosen.iceHosePrice : 0;
@@ -480,65 +522,81 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
                 return (
                   <>
-                    {!chosen.perPersonService && (
-                      <div className="rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-3">
-                        <label
-                          htmlFor="seat-extra-people"
-                          className="block text-xs font-medium text-cyan-200 mb-1.5"
-                        >
-                          Add Extra People — {chosen.label} ($
-                          {chosen.extraPersonPrice} each)
-                        </label>
-                        <select
-                          id="seat-extra-people"
-                          value={extraPeopleCount}
-                          onChange={(e) =>
-                            setExtraPeopleCount(Number(e.target.value) || 0)
-                          }
-                          className="w-full min-h-[44px] rounded-xl border border-cyan-500/30 bg-[#0B101D] px-3 py-2 text-sm font-semibold text-slate-100 focus:border-cyan-400 focus:outline-none"
-                        >
-                          {Array.from({ length: 13 }, (_, count) => (
-                            <option key={count} value={count}>
-                              {count === 0
-                                ? `0 extra people (Base ${chosen.includedPeople} ppl · +$0)`
-                                : `${count} extra ${
-                                    count === 1 ? 'person' : 'people'
-                                  } × $${chosen.extraPersonPrice} (+$${
-                                    count * chosen.extraPersonPrice
-                                  })`}
-                            </option>
-                          ))}
-                        </select>
+                    <div className="rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <span className="block text-xs font-medium text-cyan-200">
+                            Party Size
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {chosen.perPersonService
+                              ? `1 included · +$${chosen.extraPersonPrice}/extra`
+                              : `Up to ${chosen.includedPeople} included · +$${chosen.extraPersonPrice}/extra`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSeatPartySize((n) => Math.max(1, n - 1))
+                            }
+                            aria-label="Decrease party size"
+                            className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-500/30 bg-[#0B101D] text-slate-100 hover:border-cyan-400"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={50}
+                            aria-label="Party size"
+                            value={computedPartySize}
+                            onChange={(e) =>
+                              setSeatPartySize(
+                                Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1))
+                              )
+                            }
+                            className="h-11 w-14 rounded-xl border border-cyan-500/30 bg-[#0B101D] text-center font-mono text-base font-bold text-cyan-200 focus:border-cyan-400 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSeatPartySize((n) => Math.min(50, n + 1))
+                            }
+                            aria-label="Increase party size"
+                            className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-500/30 bg-[#0B101D] text-slate-100 hover:border-cyan-400"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                    )}
+                    </div>
 
                     <div className="rounded-xl border border-cyan-500/20 bg-[#060913] px-3.5 py-3 text-xs space-y-1.5">
                       <div className="flex items-center justify-between text-slate-300">
                         <span>
                           {chosen.perPersonService
-                            ? `${chosen.label} (Single person)`
-                            : `${chosen.label} (Base ${chosen.includedPeople} ppl)`}
+                            ? `${chosen.label} (1 person base)`
+                            : `${chosen.label} (Base up to ${chosen.includedPeople} ppl)`}
                         </span>
                         <span className="font-mono font-semibold text-slate-100 tabular-nums">
                           ${baseTabPrice.toFixed(2)}
                         </span>
                       </div>
 
-                      {!chosen.perPersonService && (
-                        <div className="flex items-center justify-between text-slate-400">
-                          <span>
-                            Extra people ({extraPeople} × $
-                            {chosen.extraPersonPrice})
-                          </span>
-                          <span
-                            className={`font-mono font-semibold tabular-nums ${
-                              extraTotal > 0 ? 'text-fuchsia-300' : 'text-slate-500'
-                            }`}
-                          >
-                            +${extraTotal.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span>
+                          Extra people ({extraPeople} × $
+                          {chosen.extraPersonPrice})
+                        </span>
+                        <span
+                          className={`font-mono font-semibold tabular-nums ${
+                            extraTotal > 0 ? 'text-fuchsia-300' : 'text-slate-500'
+                          }`}
+                        >
+                          +${extraTotal.toFixed(2)}
+                        </span>
+                      </div>
 
                       {upgradeVipApplied && seatUpgradeOpt && (
                         <div className="flex items-center justify-between text-amber-300">
@@ -830,11 +888,48 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
               <div className="space-y-2.5 rounded-xl border border-cyan-500/20 bg-[#060913] px-3.5 py-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <span className="text-xs font-medium text-slate-200">
-                      Party of {table.partySize}
-                      {table.guestName ? ` · ${table.guestName}` : ''}
-                    </span>
-                    <p className="text-[11px] text-cyan-300">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/25 bg-[#0B101D] px-1.5 py-0.5">
+                        <span className="text-[11px] font-medium text-slate-400 pl-1">
+                          Party
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdatePartySize(
+                              table.id,
+                              Math.max(1, (table.partySize || 1) - 1)
+                            )
+                          }
+                          aria-label="Decrease party size"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 hover:bg-cyan-500/15 hover:text-cyan-200"
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="min-w-[20px] text-center font-mono text-xs font-bold text-cyan-200 tabular-nums">
+                          {table.partySize || 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdatePartySize(
+                              table.id,
+                              Math.min(50, (table.partySize || 1) + 1)
+                            )
+                          }
+                          aria-label="Increase party size"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 hover:bg-cyan-500/15 hover:text-cyan-200"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {table.guestName && (
+                        <span className="text-xs font-medium text-slate-200 truncate">
+                          {table.guestName}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[11px] text-cyan-300">
                       {activeTier.label} · Refill{' '}
                       {activeTier.refillPrice === 0
                         ? 'Incl.'
@@ -867,14 +962,6 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                     >
                       <ArrowRightLeft className="h-3.5 w-3.5 text-fuchsia-300" />
                       Move
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onRefreshCoals(table.id)}
-                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-500/15 px-2.5 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 whitespace-nowrap"
-                    >
-                      <Flame className="h-3.5 w-3.5 text-amber-400" />
-                      Coals
                     </button>
                   </div>
                 </div>
@@ -1083,6 +1170,10 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           prepStatus: 'served',
                           orderedAt: Date.now(),
                         });
+                        onUpdatePartySize(
+                          table.id,
+                          (table.partySize || 1) + addExtraCount
+                        );
                       }}
                       className="min-h-[44px] shrink-0 rounded-xl bg-fuchsia-500 px-4 text-xs font-bold text-white hover:bg-fuchsia-400 cyber-glow-magenta whitespace-nowrap"
                     >
@@ -1234,12 +1325,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             type="button"
-                            onClick={() =>
-                              onRequireManagerPin(
-                                `reduce or remove ${order.name}`,
-                                () => onUpdateQty(table.id, order.id, -1)
-                              )
-                            }
+                            onClick={() => onUpdateQty(table.id, order.id, -1)}
                             className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-500/25 bg-[#0B101D] text-slate-200 hover:border-cyan-400"
                             aria-label={`Decrease quantity of ${order.name}`}
                           >

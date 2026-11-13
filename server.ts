@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
+  createInitialBlends,
   createInitialFlavors,
   createInitialTables,
   DEFAULT_SETTINGS,
@@ -18,6 +19,7 @@ import type {
   ActiveStaffMember,
   BatchReport,
   CompletedSession,
+  FlavorCategory,
   FlavorOption,
   KitchenTicketPayload,
   LoungeSettings,
@@ -53,15 +55,27 @@ function loadPersistedState(): PersistedData {
       const raw = fs.readFileSync(STATE_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<PersistedData>;
       if (Array.isArray(parsed.tables) && parsed.tables.length > 0) {
+        const rawSettings = (parsed.settings ?? {}) as Record<string, unknown>;
+        const { managerPin: _removedPin, ...cleanSettings } = rawSettings;
+        const rawFlavors =
+          Array.isArray(parsed.flavors) && parsed.flavors.length > 0
+            ? parsed.flavors
+            : createInitialFlavors();
+        const hasCategoryTags = rawFlavors.some(
+          (f) => f.category === 'flavor' || f.category === 'blend'
+        );
+        const migratedFlavors: FlavorOption[] = hasCategoryTags
+          ? rawFlavors
+          : [
+              ...rawFlavors.map((f) => ({ ...f, category: 'flavor' as const })),
+              ...createInitialBlends(),
+            ];
         return {
           tables: parsed.tables,
           history: Array.isArray(parsed.history) ? parsed.history : [],
-          settings: parsed.settings ?? DEFAULT_SETTINGS,
+          settings: { ...DEFAULT_SETTINGS, ...cleanSettings } as LoungeSettings,
           lastBatchReport: parsed.lastBatchReport ?? null,
-          flavors:
-            Array.isArray(parsed.flavors) && parsed.flavors.length > 0
-              ? parsed.flavors
-              : createInitialFlavors(),
+          flavors: migratedFlavors,
         };
       }
     }
@@ -399,6 +413,23 @@ async function startServer() {
             break;
           }
 
+          case 'table:updatePartySize': {
+            const tableId = String(msg.tableId || '');
+            const partySize = Math.max(
+              1,
+              Math.min(50, Math.round(Number(msg.partySize) || 1))
+            );
+            const table = state.tables.find((t) => t.id === tableId);
+            if (!table || table.status !== 'occupied') break;
+
+            table.partySize = partySize;
+            table.updatedAt = now;
+
+            scheduleSave();
+            broadcast(wss, { type: 'table:updated', table });
+            break;
+          }
+
           case 'table:addOrder': {
             const tableId = String(msg.tableId || '');
             const item = msg.item as OrderItem | undefined;
@@ -723,20 +754,25 @@ async function startServer() {
           case 'layout:saveTable': {
             const payload = msg.data as {
               id?: string;
-              name: string;
+              newId?: string;
+              name?: string;
               tableNumber?: string;
               floor: TableFloor;
               zone: TableZone;
               seats: number;
               shape: TableShape;
             };
-            if (!payload || !payload.name) break;
+            if (!payload) break;
             const cleanTableNum = String(payload.tableNumber || '').trim() || undefined;
+            const cleanName =
+              String(payload.name || '').trim() ||
+              (cleanTableNum ? `Table ${cleanTableNum}` : '');
+            if (!cleanName) break;
 
             if (payload.id) {
               const table = state.tables.find((t) => t.id === payload.id);
               if (!table) break;
-              table.name = payload.name.trim();
+              table.name = cleanName;
               table.tableNumber = cleanTableNum;
               table.floor = payload.floor;
               table.zone = payload.zone;
@@ -747,21 +783,27 @@ async function startServer() {
               scheduleSave();
               broadcast(wss, { type: 'table:updated', table });
             } else {
-              const newId = `t-${now}-${Math.random().toString(36).slice(2, 6)}`;
+              const requestedId = String(payload.newId || '').trim();
+              const newId =
+                requestedId && !state.tables.some((t) => t.id === requestedId)
+                  ? requestedId
+                  : `t-${now}-${Math.random().toString(36).slice(2, 6)}`;
               const floorTables = state.tables.filter(
                 (t) => t.floor === payload.floor
               );
-              const offset = (floorTables.length % 4) * 14;
+              const idx = floorTables.length;
+              const col = idx % 3;
+              const row = Math.floor(idx / 3) % 4;
               const newTable: LoungeTable = {
                 id: newId,
-                name: payload.name.trim(),
+                name: cleanName,
                 tableNumber: cleanTableNum,
                 floor: payload.floor,
                 zone: payload.zone,
                 seats: Math.max(1, Number(payload.seats) || 4),
                 shape: payload.shape,
-                x: Math.min(72, 10 + offset),
-                y: Math.min(72, 14 + offset),
+                x: Math.min(72, 6 + col * 30),
+                y: Math.min(72, 10 + row * 26),
                 status: 'available',
                 orders: [],
                 updatedAt: now,
@@ -812,9 +854,6 @@ async function startServer() {
               ),
               kitchenPrinterWidth: widthVal,
               autoPrintKitchenTicket: Boolean(nextSettings.autoPrintKitchenTicket),
-              managerPin: String(nextSettings.managerPin || '')
-                .replace(/\D/g, '')
-                .slice(0, 6),
             };
             scheduleSave();
             broadcast(wss, { type: 'settings:updated', settings: state.settings });
@@ -824,16 +863,23 @@ async function startServer() {
           case 'flavors:add': {
             const rawName = String(msg.name || '').trim();
             if (!rawName) break;
+            const category: FlavorCategory =
+              msg.category === 'blend' ? 'blend' : 'flavor';
+            const recipe = String(msg.recipe || '').trim() || undefined;
             const existing = state.flavors.find(
               (f) => f.name.toLowerCase() === rawName.toLowerCase()
             );
             if (existing) {
               existing.available = true;
+              existing.category = category;
+              if (recipe !== undefined) existing.recipe = recipe;
             } else {
               state.flavors.push({
-                id: `flv-${now}-${Math.random().toString(36).slice(2, 6)}`,
+                id: `${category === 'blend' ? 'bld' : 'flv'}-${now}-${Math.random().toString(36).slice(2, 6)}`,
                 name: rawName,
                 available: true,
+                category,
+                recipe,
               });
             }
             scheduleSave();

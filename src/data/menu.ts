@@ -17,7 +17,6 @@ export const DEFAULT_SETTINGS: LoungeSettings = {
   kitchenPrinterPort: 9100,
   kitchenPrinterWidth: '80mm',
   autoPrintKitchenTicket: false,
-  managerPin: '',
 };
 export const COAL_REPEAT_MINUTES = 10;
 
@@ -38,12 +37,33 @@ export const SHISHA_FLAVORS: string[] = [
   'Gummy Bear',
 ];
 
-export function createInitialFlavors(): FlavorOption[] {
-  return SHISHA_FLAVORS.map((name, idx) => ({
-    id: `flv-${idx + 1}`,
-    name,
+export const SHISHA_BLENDS: Array<{ name: string; recipe?: string }> = [
+  { name: 'Berry Frost', recipe: 'Blue Mist + Mint' },
+  { name: 'Sweet Apple Chill', recipe: 'Double Apple + Mint' },
+  { name: 'Tropical Sunset', recipe: 'Mango + Peach + Watermelon' },
+  { name: 'Sin City Special', recipe: 'Love 66 + Lady Killer + Mint' },
+];
+
+export function createInitialBlends(): FlavorOption[] {
+  return SHISHA_BLENDS.map((blend, idx) => ({
+    id: `bld-${idx + 1}`,
+    name: blend.name,
     available: true,
+    category: 'blend',
+    recipe: blend.recipe,
   }));
+}
+
+export function createInitialFlavors(): FlavorOption[] {
+  return [
+    ...SHISHA_FLAVORS.map((name, idx) => ({
+      id: `flv-${idx + 1}`,
+      name,
+      available: true,
+      category: 'flavor' as const,
+    })),
+    ...createInitialBlends(),
+  ];
 }
 
 export interface SeatingTierConfig {

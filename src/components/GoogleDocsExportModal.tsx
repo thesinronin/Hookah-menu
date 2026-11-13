@@ -112,11 +112,11 @@ export const GoogleDocsExportModal: React.FC<GoogleDocsExportModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 pt-safe pb-safe sm:p-4"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full sm:max-w-lg overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-cyan-500/30 bg-[#0A0F1C] p-5 shadow-[0_0_40px_rgba(6,182,212,0.16)]"
+        className="modal-safe-panel w-full sm:max-w-lg overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-cyan-500/30 bg-[#0A0F1C] p-4 sm:p-5 pb-safe shadow-[0_0_40px_rgba(6,182,212,0.16)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-cyan-500/40 sm:hidden" />

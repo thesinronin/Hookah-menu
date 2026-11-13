@@ -140,11 +140,11 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[65] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4"
+      className="fixed inset-0 z-[65] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 pt-safe pb-safe sm:p-4"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[92vh] w-full sm:max-w-lg flex-col rounded-t-3xl sm:rounded-2xl border border-cyan-500/35 bg-[#0A0F1C] p-5 shadow-[0_0_40px_rgba(6,182,212,0.18)]"
+        className="modal-safe-panel flex w-full sm:max-w-lg flex-col rounded-t-3xl sm:rounded-2xl border border-cyan-500/35 bg-[#0A0F1C] p-4 sm:p-5 pb-safe shadow-[0_0_40px_rgba(6,182,212,0.18)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-cyan-500/40 sm:hidden" />

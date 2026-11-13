@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Flame, Printer, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { CheckCircle2, Printer, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { FLOORS } from '../data/menu';
 import type {
-  LoungeSettings,
   LoungeTable,
   OrderItem,
   PrepStatus,
@@ -11,9 +10,7 @@ import type {
 
 interface HookahStationScreenProps {
   tables: LoungeTable[];
-  settings: LoungeSettings;
   onAdvancePrep: (tableId: string, orderId: string, nextStatus: PrepStatus) => void;
-  onRefreshCoals: (tableId: string) => void;
   onOpenFlavorManager: () => void;
   onPrintOrder: (table: LoungeTable, order: OrderItem) => void;
   onQuickPrintOrder: (table: LoungeTable, order: OrderItem) => void;
@@ -21,9 +18,7 @@ interface HookahStationScreenProps {
 
 export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
   tables,
-  settings,
   onAdvancePrep,
-  onRefreshCoals,
   onOpenFlavorManager,
   onPrintOrder,
   onQuickPrintOrder,
@@ -52,26 +47,17 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
 
   pendingOrders.sort((a, b) => a.order.orderedAt - b.order.orderedAt);
 
-  const coalDueTables = scopedTables
-    .filter(
-      (t) =>
-        t.status === 'occupied' &&
-        t.lastCoalCheckAt !== undefined &&
-        (now - t.lastCoalCheckAt) / 60_000 >= settings.coalAlertMinutes
-    )
-    .sort((a, b) => (a.lastCoalCheckAt || 0) - (b.lastCoalCheckAt || 0));
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-5">
       {/* Floor Filter & Flavor Inventory */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-cyan-500/25 bg-[#0B101D] p-1 flex-1 min-w-[260px] max-w-xl">
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+        <div className="grid grid-cols-4 gap-1 rounded-xl border border-cyan-500/25 bg-[#0B101D] p-0.5 sm:p-1 flex-1 min-w-[220px] max-w-xl">
           {(['All', ...FLOORS] as const).map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFloorFilter(f)}
-              className={`min-h-[40px] rounded-lg px-2 text-xs font-bold transition-colors whitespace-nowrap font-display tracking-wide ${
+              className={`min-h-[32px] sm:min-h-[40px] rounded-lg px-1.5 sm:px-2 text-[11px] sm:text-xs font-bold transition-colors whitespace-nowrap font-display tracking-wide ${
                 floorFilter === f
                   ? 'bg-cyan-400 text-slate-950 cyber-glow-cyan'
                   : 'text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-200'
@@ -85,87 +71,31 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
         <button
           type="button"
           onClick={onOpenFlavorManager}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-xs font-bold text-fuchsia-200 transition-colors hover:bg-fuchsia-500/20 cyber-glow-magenta whitespace-nowrap shrink-0"
+          className="inline-flex min-h-[36px] sm:min-h-[44px] items-center gap-1.5 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 sm:px-4 py-1.5 text-[11px] sm:text-xs font-bold text-fuchsia-200 transition-colors hover:bg-fuchsia-500/20 cyber-glow-magenta whitespace-nowrap shrink-0"
         >
-          <Sparkles className="h-4 w-4 text-fuchsia-400" />
-          Manage Flavors
+          <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-fuchsia-400" />
+          Flavors
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Coal Rotation Alerts */}
-        <section className="lg:col-span-5 space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-base font-bold text-slate-100">
-              Coal Rotation Alerts
-            </h2>
-            <span className="font-mono text-xs text-amber-400 tabular-nums">
-              {coalDueTables.length} due
-            </span>
+      {/* Hookah Prep Queue */}
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-bold text-slate-100">
+            Hookah Prep Queue
+          </h2>
+          <span className="font-mono text-xs text-cyan-300 tabular-nums">
+            {pendingOrders.length} active ticket
+            {pendingOrders.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {pendingOrders.length === 0 ? (
+          <div className="rounded-2xl border cyber-surface p-8 text-center text-xs text-slate-400">
+            No bowls waiting to be packed. New hookah orders from any server device appear here automatically.
           </div>
-
-          {coalDueTables.length === 0 ? (
-            <div className="rounded-2xl border cyber-surface p-6 text-center text-xs text-slate-400">
-              <CheckCircle2 className="mx-auto mb-2 h-5 w-5 text-emerald-400" />
-              All active tables in this view have fresh coals (alert at{' '}
-              {settings.coalAlertMinutes}m).
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {coalDueTables.map((t) => {
-                const mins = Math.floor(
-                  (now - (t.lastCoalCheckAt || now)) / 60_000
-                );
-                return (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-amber-400/50 bg-amber-500/[0.08] p-4"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-100 font-display">
-                        {t.floor} · {t.name}
-                      </p>
-                      <p className="mt-0.5 text-xs text-amber-300">
-                        {t.zone} · Last coal check{' '}
-                        <span className="font-mono font-semibold tabular-nums">
-                          {mins}m
-                        </span>{' '}
-                        ago
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRefreshCoals(t.id)}
-                      className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-xl bg-amber-400 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-amber-300 whitespace-nowrap"
-                    >
-                      <Flame className="h-4 w-4" />
-                      Coals Done
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Hookah Prep Queue */}
-        <section className="lg:col-span-7 space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-base font-bold text-slate-100">
-              Hookah Prep Queue
-            </h2>
-            <span className="font-mono text-xs text-cyan-300 tabular-nums">
-              {pendingOrders.length} active ticket
-              {pendingOrders.length === 1 ? '' : 's'}
-            </span>
-          </div>
-
-          {pendingOrders.length === 0 ? (
-            <div className="rounded-2xl border cyber-surface p-8 text-center text-xs text-slate-400">
-              No bowls waiting to be packed. New hookah orders from any server device appear here automatically.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {pendingOrders.map(({ table, order }) => {
                 const nextStatus: PrepStatus =
                   order.prepStatus === 'queued' ? 'prepping' : 'served';
@@ -264,8 +194,7 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
               })}
             </div>
           )}
-        </section>
-      </div>
+      </section>
     </div>
   );
 };

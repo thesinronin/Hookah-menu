@@ -59,7 +59,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         <button
           type="button"
           onClick={handlePrimaryClick}
-          className={`inline-flex min-h-[40px] items-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
+          className={`inline-flex min-h-[32px] md:min-h-[40px] items-center gap-1.5 rounded-lg px-2 sm:px-3 py-1 text-[11px] md:text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
             isInstallable
               ? 'bg-cyan-400 text-slate-950 hover:bg-cyan-300 cyber-glow-cyan'
               : 'border border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-200 hover:border-fuchsia-400 hover:bg-fuchsia-500/20'
@@ -82,11 +82,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 
       {showGuide && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm pt-safe pb-safe sm:p-4"
           onClick={() => setShowGuide(false)}
         >
           <div
-            className="w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-cyan-500/35 bg-[#0A0F1C] p-5 shadow-[0_0_40px_rgba(6,182,212,0.18)]"
+            className="modal-safe-panel overflow-y-auto w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-cyan-500/35 bg-[#0A0F1C] p-5 pb-safe shadow-[0_0_40px_rgba(6,182,212,0.18)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-cyan-500/40 sm:hidden" />

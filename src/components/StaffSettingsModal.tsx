@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Lock, Monitor, Printer, RotateCcw, Sparkles, Users, Volume2, Wifi, X } from 'lucide-react';
+import { Monitor, Printer, RotateCcw, Sparkles, Users, Volume2, Wifi, X } from 'lucide-react';
 import type {
   ActiveStaffMember,
   AlertMode,
@@ -48,7 +48,6 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
   const [name, setName] = useState(profile.name);
   const [role, setRole] = useState<StaffRole>(profile.role);
   const [alertMode, setAlertMode] = useState<AlertMode>(profile.alertMode);
-  const [coalMins, setCoalMins] = useState(String(settings.coalAlertMinutes));
   const [stayMins, setStayMins] = useState(String(settings.longStayAlertMinutes));
   const [printerMode, setPrinterMode] = useState<PrinterMode>(
     settings.kitchenPrinterMode || 'system'
@@ -63,7 +62,6 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
   const [autoPrint, setAutoPrint] = useState(
     Boolean(settings.autoPrintKitchenTicket)
   );
-  const [managerPin, setManagerPin] = useState(settings.managerPin || '');
   const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
@@ -71,14 +69,12 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
     setName(profile.name);
     setRole(profile.role);
     setAlertMode(profile.alertMode);
-    setCoalMins(String(settings.coalAlertMinutes));
     setStayMins(String(settings.longStayAlertMinutes));
     setPrinterMode(settings.kitchenPrinterMode || 'system');
     setPrinterIp(settings.kitchenPrinterIp || '');
     setPrinterPort(String(settings.kitchenPrinterPort || 9100));
     setPrinterWidth(settings.kitchenPrinterWidth || '80mm');
     setAutoPrint(Boolean(settings.autoPrintKitchenTicket));
-    setManagerPin(settings.managerPin || '');
     setConfirmReset(false);
   }, [visible, profile, settings]);
 
@@ -92,14 +88,13 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
       alertMode,
     });
     onUpdateSettings({
-      coalAlertMinutes: Math.max(5, parseInt(coalMins, 10) || 25),
+      coalAlertMinutes: settings.coalAlertMinutes,
       longStayAlertMinutes: Math.max(15, parseInt(stayMins, 10) || 120),
       kitchenPrinterMode: printerMode,
       kitchenPrinterIp: printerIp.trim(),
       kitchenPrinterPort: Math.max(1, parseInt(printerPort, 10) || 9100),
       kitchenPrinterWidth: printerWidth,
       autoPrintKitchenTicket: autoPrint,
-      managerPin: managerPin.replace(/\D/g, '').slice(0, 6),
     });
     onClose();
   };
@@ -107,19 +102,19 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
   const handleTestAudio = async () => {
     await unlockAudioEngine();
     await triggerTimerAlert(
-      'coal',
-      'Coal check due for Floor 2, VIP 1',
+      'longstay',
+      'Time limit alert test for Floor 2, VIP 1',
       alertMode === 'silent' ? 'chime_voice' : alertMode
     );
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm pt-safe pb-safe sm:p-4"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full sm:max-w-lg overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-cyan-500/30 bg-[#0A0F1C] p-5 shadow-[0_0_40px_rgba(6,182,212,0.16)]"
+        className="modal-safe-panel w-full sm:max-w-lg overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-cyan-500/30 bg-[#0A0F1C] p-5 pb-safe shadow-[0_0_40px_rgba(6,182,212,0.16)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-cyan-500/40 sm:hidden" />
@@ -212,33 +207,18 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-cyan-200/80 mb-1.5">
-                  Coal Check Alert (mins)
-                </label>
-                <input
-                  type="number"
-                  min={5}
-                  max={120}
-                  value={coalMins}
-                  onChange={(e) => setCoalMins(e.target.value)}
-                  className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2 font-mono text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-cyan-200/80 mb-1.5">
-                  Long Stay Alert (mins)
-                </label>
-                <input
-                  type="number"
-                  min={15}
-                  max={360}
-                  value={stayMins}
-                  onChange={(e) => setStayMins(e.target.value)}
-                  className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2 font-mono text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-medium text-cyan-200/80 mb-1.5">
+                Long Stay Alert (mins)
+              </label>
+              <input
+                type="number"
+                min={15}
+                max={360}
+                value={stayMins}
+                onChange={(e) => setStayMins(e.target.value)}
+                className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2 font-mono text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
+              />
             </div>
 
             <button
@@ -429,39 +409,6 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
                 />
                 Auto-print new LAN tickets
               </label>
-            </div>
-          </div>
-
-          {/* Manager PIN Lock */}
-          <div className="space-y-2 border-t border-cyan-500/20 pt-4">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-200/80">
-              <Lock className="h-3.5 w-3.5 text-fuchsia-400" />
-              Manager Security PIN (optional)
-            </span>
-            <p className="text-[11px] text-slate-400">
-              Locks Batch Out, Edit Floor Layout, and Voiding/Reducing Items across all devices. Leave blank to disable.
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                value={managerPin}
-                onChange={(e) =>
-                  setManagerPin(e.target.value.replace(/\D/g, '').slice(0, 6))
-                }
-                placeholder="4–6 digit PIN (e.g. 1234)"
-                className="flex-1 min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2 font-mono text-sm tracking-widest text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
-              />
-              {managerPin && (
-                <button
-                  type="button"
-                  onClick={() => setManagerPin('')}
-                  className="min-h-[44px] rounded-xl border border-cyan-500/25 px-3 text-xs font-semibold text-slate-400 hover:text-slate-100"
-                >
-                  Clear PIN
-                </button>
-              )}
             </div>
           </div>
 

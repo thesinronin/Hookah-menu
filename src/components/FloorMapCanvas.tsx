@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Flame, Move, Sun, Layers } from 'lucide-react';
+import { Move, Sun, Layers } from 'lucide-react';
 import type { LoungeSettings, LoungeTable, TableFloor } from '../types';
 import { formatDuration } from './TimerDisplay';
 
@@ -35,10 +35,6 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
   const pointerStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
 
   const isOccupied = table.status === 'occupied';
-  const isCoalDue =
-    isOccupied &&
-    table.lastCoalCheckAt !== undefined &&
-    (now - table.lastCoalCheckAt) / 60_000 >= settings.coalAlertMinutes;
 
   const elapsedMins =
     isOccupied && table.seatedAt !== undefined
@@ -130,14 +126,14 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
 
   const shapeClass =
     table.shape === 'round'
-      ? 'rounded-full w-[108px] sm:w-[116px]'
+      ? 'rounded-full w-[94px] sm:w-[116px]'
       : table.shape === 'booth'
-      ? 'rounded-2xl w-[132px] sm:w-[148px]'
-      : 'rounded-xl w-[108px] sm:w-[118px]';
+      ? 'rounded-2xl w-[114px] sm:w-[148px]'
+      : 'rounded-xl w-[94px] sm:w-[118px]';
 
   const borderAndBg = isEditing
     ? 'border-dashed border-cyan-400/80 bg-[#0F1B2E] hover:bg-[#15243D]'
-    : isCoalDue || isExpiringSoon
+    : isExpiringSoon
     ? 'border-amber-400/90 bg-[#201609] hover:bg-[#291C0B]'
     : isLongStay
     ? 'border-fuchsia-500/85 bg-[#200C23] hover:bg-[#2A102E] cyber-glow-magenta'
@@ -170,7 +166,7 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
           : undefined,
         touchAction: isEditing ? 'none' : 'manipulation',
       }}
-      className={`absolute flex h-[86px] select-none flex-col items-center justify-center border px-2.5 py-2 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${shapeClass} ${borderAndBg} ${
+      className={`absolute flex h-[70px] sm:h-[86px] select-none flex-col items-center justify-center border px-2 py-1.5 sm:px-2.5 sm:py-2 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${shapeClass} ${borderAndBg} ${
         isEditing ? 'cursor-grab active:cursor-grabbing z-20' : 'cursor-pointer z-10'
       }`}
     >
@@ -179,9 +175,6 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
           {table.tableNumber ? `#${table.tableNumber} · ${table.name}` : table.name}
         </span>
         {isEditing && <Move className="h-3.5 w-3.5 shrink-0 text-cyan-400" />}
-        {!isEditing && isCoalDue && (
-          <Flame className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-        )}
       </div>
 
       {isEditing ? (
@@ -192,7 +185,7 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
         <div className="mt-1 flex flex-col items-center">
           <span
             className={`font-mono text-xs font-semibold tabular-nums ${
-              isCoalDue || isExpiringSoon
+              isExpiringSoon
                 ? 'text-amber-300'
                 : isLongStay
                 ? 'text-fuchsia-300'
@@ -250,7 +243,7 @@ export const FloorMapCanvas: React.FC<FloorMapCanvasProps> = ({
 
       <div
         ref={canvasRef}
-        className={`relative h-[470px] sm:h-[540px] w-full overflow-hidden rounded-2xl border ${
+        className={`relative h-[360px] sm:h-[520px] w-full overflow-hidden rounded-2xl border ${
           isOutside
             ? 'patio-grid-bg border-emerald-500/30'
             : 'floor-grid-bg border-cyan-500/25'

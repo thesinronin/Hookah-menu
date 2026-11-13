@@ -10,6 +10,7 @@ import type {
   ActiveStaffMember,
   BatchReport,
   CompletedSession,
+  FlavorCategory,
   FlavorOption,
   LoungeSettings,
   LoungeStateSnapshot,
@@ -282,6 +283,24 @@ export function useLoungeSync(staff: StaffProfile) {
         type: 'table:updateNumber',
         tableId,
         tableNumber: clean || '',
+      });
+    },
+    [sendAction]
+  );
+
+  const updatePartySize = useCallback(
+    (tableId: string, partySize: number) => {
+      const nextSize = Math.max(1, Math.min(50, Math.round(partySize || 1)));
+      const now = Date.now();
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId ? { ...t, partySize: nextSize, updatedAt: now } : t
+        )
+      );
+      sendAction({
+        type: 'table:updatePartySize',
+        tableId,
+        partySize: nextSize,
       });
     },
     [sendAction]
@@ -644,28 +663,43 @@ export function useLoungeSync(staff: StaffProfile) {
   );
 
   const addFlavor = useCallback(
-    (name: string) => {
+    (name: string, category: FlavorCategory = 'flavor', recipe?: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      const cleanRecipe = recipe?.trim() || undefined;
       setFlavors((prev) => {
         const existing = prev.find(
           (f) => f.name.toLowerCase() === trimmed.toLowerCase()
         );
         if (existing) {
           return prev.map((f) =>
-            f.id === existing.id ? { ...f, available: true } : f
+            f.id === existing.id
+              ? {
+                  ...f,
+                  available: true,
+                  category,
+                  recipe: cleanRecipe !== undefined ? cleanRecipe : f.recipe,
+                }
+              : f
           );
         }
         return [
           ...prev,
           {
-            id: `flv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: `${category === 'blend' ? 'bld' : 'flv'}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: trimmed,
             available: true,
+            category,
+            recipe: cleanRecipe,
           },
         ];
       });
-      sendAction({ type: 'flavors:add', name: trimmed });
+      sendAction({
+        type: 'flavors:add',
+        name: trimmed,
+        category,
+        recipe: cleanRecipe,
+      });
     },
     [sendAction]
   );
@@ -713,7 +747,63 @@ export function useLoungeSync(staff: StaffProfile) {
       seats: number;
       shape: TableShape;
     }) => {
-      sendAction({ type: 'layout:saveTable', data });
+      const now = Date.now();
+      const cleanTableNum = data.tableNumber?.trim() || undefined;
+      const cleanName =
+        data.name.trim() || (cleanTableNum ? `Table ${cleanTableNum}` : '');
+      if (!cleanName) return;
+
+      if (data.id) {
+        setTables((prev) =>
+          prev.map((t) =>
+            t.id === data.id
+              ? {
+                  ...t,
+                  name: cleanName,
+                  tableNumber: cleanTableNum,
+                  floor: data.floor,
+                  zone: data.zone,
+                  seats: Math.max(1, data.seats || 4),
+                  shape: data.shape,
+                  updatedAt: now,
+                }
+              : t
+          )
+        );
+        sendAction({
+          type: 'layout:saveTable',
+          data: { ...data, name: cleanName, tableNumber: cleanTableNum },
+        });
+        return;
+      }
+
+      const newId = `t-${now}-${Math.random().toString(36).slice(2, 6)}`;
+      setTables((prev) => {
+        if (prev.some((t) => t.id === newId)) return prev;
+        const floorTables = prev.filter((t) => t.floor === data.floor);
+        const idx = floorTables.length;
+        const col = idx % 3;
+        const row = Math.floor(idx / 3) % 4;
+        const newTable: LoungeTable = {
+          id: newId,
+          name: cleanName,
+          tableNumber: cleanTableNum,
+          floor: data.floor,
+          zone: data.zone,
+          seats: Math.max(1, data.seats || 4),
+          shape: data.shape,
+          x: Math.min(72, 6 + col * 30),
+          y: Math.min(72, 10 + row * 26),
+          status: 'available',
+          orders: [],
+          updatedAt: now,
+        };
+        return [...prev, newTable];
+      });
+      sendAction({
+        type: 'layout:saveTable',
+        data: { ...data, newId, name: cleanName, tableNumber: cleanTableNum },
+      });
     },
     [sendAction]
   );
@@ -864,6 +954,7 @@ export function useLoungeSync(staff: StaffProfile) {
     connectionState,
     seatTable,
     updateTableNumber,
+    updatePartySize,
     addOrder,
     updateOrderQty,
     refreshCoals,
