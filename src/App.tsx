@@ -1,22 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
+  Crown,
   Flame,
   LayoutGrid,
   Settings2,
   Volume2,
   X,
 } from 'lucide-react';
-import { COAL_REPEAT_MINUTES } from './data/menu';
+import {
+  COAL_REPEAT_MINUTES,
+  getTableSeatingTier,
+  getVipUpgradeOption,
+} from './data/menu';
 import { useLoungeSync } from './hooks/useLoungeSync';
 import { triggerTimerAlert, unlockAudioEngine } from './services/audioAlerts';
-import { printViaNetworkEscPos } from './services/kitchenPrinter';
+import {
+  printViaBluetoothEscPos,
+  printViaNetworkEscPos,
+} from './services/kitchenPrinter';
 import type {
   BatchReport,
   KitchenTicketItem,
   KitchenTicketPayload,
   LoungeTable,
   OrderItem,
+  PaymentMethod,
   PrinterPaperWidth,
   SeatingTierId,
   StaffProfile,
@@ -32,6 +41,7 @@ import { GoogleDocsExportModal } from './components/GoogleDocsExportModal';
 import { BatchOutModal } from './components/BatchOutModal';
 import { FlavorManagerModal } from './components/FlavorManagerModal';
 import { KitchenPrintModal } from './components/KitchenPrintModal';
+import { PinPromptModal } from './components/PinPromptModal';
 import { ThermalReceiptPrintView } from './components/ThermalReceiptPrintView';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -70,7 +80,7 @@ interface ActiveAlertBanner {
   id: string;
   tableId: string;
   title: string;
-  kind: 'coal' | 'longstay' | 'order';
+  kind: 'coal' | 'longstay' | 'expiring' | 'order';
 }
 
 export default function App() {
@@ -90,11 +100,19 @@ export default function App() {
   const [isFlavorManagerOpen, setIsFlavorManagerOpen] = useState(false);
   const [kitchenPrintTicket, setKitchenPrintTicket] =
     useState<KitchenTicketPayload | null>(null);
+  const [kitchenPrintMeta, setKitchenPrintMeta] = useState<{
+    tableId: string;
+    orderIds: string[];
+  } | null>(null);
   const [isKitchenPrintOpen, setIsKitchenPrintOpen] = useState(false);
   const [systemPrintTicket, setSystemPrintTicket] =
     useState<KitchenTicketPayload | null>(null);
   const [systemPrintWidth, setSystemPrintWidth] =
     useState<PrinterPaperWidth>('80mm');
+  const [pendingPinAction, setPendingPinAction] = useState<{
+    actionLabel: string;
+    action: () => void;
+  } | null>(null);
   const [alertBanner, setAlertBanner] = useState<ActiveAlertBanner | null>(null);
 
   const {
@@ -111,6 +129,8 @@ export default function App() {
     refreshCoals,
     advancePrep,
     checkoutTable,
+    transferTable,
+    markOrdersPrinted,
     upgradeToVip,
     updateOrderFlavors,
     updateTableNumber,
@@ -129,6 +149,7 @@ export default function App() {
 
   const lastCoalAlertRef = useRef<Record<string, number>>({});
   const lastStayAlertRef = useRef<Record<string, number>>({});
+  const lastWarningAlertRef = useRef<Record<string, number>>({});
   const prevQueuedCountRef = useRef<number | null>(null);
 
   // Persist local staff identity & audio preference
@@ -178,6 +199,30 @@ export default function App() {
 
         const stayMins = (now - table.seatedAt) / 60_000;
         const stayLimit = table.timeLimitMinutes ?? settings.longStayAlertMinutes;
+        if (
+          table.timeLimitMinutes &&
+          stayMins >= table.timeLimitMinutes - 15 &&
+          stayMins < table.timeLimitMinutes &&
+          !lastWarningAlertRef.current[table.id]
+        ) {
+          lastWarningAlertRef.current[table.id] = now;
+          const minsLeft = Math.max(
+            1,
+            Math.ceil(table.timeLimitMinutes - stayMins)
+          );
+          const msg = `${table.floor}, ${
+            table.tableNumber ? `#${table.tableNumber} ${table.name}` : table.name
+          } has ${minsLeft}m left before 2h limit`;
+          triggerTimerAlert('longstay', msg, staff.alertMode);
+          setAlertBanner({
+            id: `warn-${table.id}-${now}`,
+            tableId: table.id,
+            title: msg,
+            kind: 'expiring',
+          });
+          break;
+        }
+
         if (
           stayMins >= stayLimit &&
           !lastStayAlertRef.current[table.id]
@@ -272,12 +317,86 @@ export default function App() {
     };
   };
 
+  const requireManagerPin = (actionLabel: string, action: () => void) => {
+    const pin = (settings.managerPin || '').trim();
+    if (!pin) {
+      action();
+      return;
+    }
+    setPendingPinAction({ actionLabel, action });
+  };
+
+  const getPrintableOrders = (
+    table: LoungeTable,
+    specificOrders?: OrderItem[]
+  ): OrderItem[] => {
+    if (specificOrders && specificOrders.length > 0) return specificOrders;
+    const prepOrders = table.orders.filter(
+      (o) =>
+        o.category === 'hookah' ||
+        o.menuItemId === 'r1' ||
+        o.menuItemId === 'r-ice' ||
+        o.menuItemId === 'r2'
+    );
+    return prepOrders.length > 0 ? prepOrders : table.orders;
+  };
+
   const openKitchenPrint = (
     table: LoungeTable,
     specificOrders?: OrderItem[]
   ) => {
+    const targetOrders = getPrintableOrders(table, specificOrders);
+    setKitchenPrintMeta({
+      tableId: table.id,
+      orderIds: targetOrders.map((o) => o.id),
+    });
     setKitchenPrintTicket(buildKitchenTicket(table, specificOrders));
     setIsKitchenPrintOpen(true);
+  };
+
+  const handleQuickPrint = async (
+    table: LoungeTable,
+    specificOrders?: OrderItem[]
+  ) => {
+    const targetOrders = getPrintableOrders(table, specificOrders);
+    const orderIds = targetOrders.map((o) => o.id);
+    const ticket = buildKitchenTicket(table, specificOrders);
+    const mode = settings.kitchenPrinterMode || 'system';
+    const width = settings.kitchenPrinterWidth || '80mm';
+
+    if (mode === 'network') {
+      if (!settings.kitchenPrinterIp) {
+        openKitchenPrint(table, specificOrders);
+        return;
+      }
+      const res = await printViaNetworkEscPos(
+        ticket,
+        settings.kitchenPrinterIp,
+        settings.kitchenPrinterPort || 9100,
+        width
+      );
+      if (res.ok) {
+        triggerHaptic(12);
+        if (orderIds.length > 0) markOrdersPrinted(table.id, orderIds);
+      } else {
+        openKitchenPrint(table, specificOrders);
+      }
+      return;
+    }
+
+    if (mode === 'bluetooth') {
+      const res = await printViaBluetoothEscPos(ticket, width);
+      if (res.ok) {
+        triggerHaptic(12);
+        if (orderIds.length > 0) markOrdersPrinted(table.id, orderIds);
+      } else {
+        openKitchenPrint(table, specificOrders);
+      }
+      return;
+    }
+
+    handleSystemPrint(ticket, width);
+    if (orderIds.length > 0) markOrdersPrinted(table.id, orderIds);
   };
 
   const handleSystemPrint = (
@@ -319,7 +438,16 @@ export default function App() {
       settings.kitchenPrinterIp,
       settings.kitchenPrinterPort || 9100,
       settings.kitchenPrinterWidth || '80mm'
-    ).catch(() => {});
+    )
+      .then((res) => {
+        if (res.ok) {
+          markOrdersPrinted(
+            table.id,
+            prepOrders.map((o) => o.id)
+          );
+        }
+      })
+      .catch(() => {});
   };
 
   const handleSeatTable = (
@@ -334,6 +462,7 @@ export default function App() {
     triggerHaptic(14);
     delete lastCoalAlertRef.current[tableId];
     delete lastStayAlertRef.current[tableId];
+    delete lastWarningAlertRef.current[tableId];
     seatTable(
       tableId,
       partySize,
@@ -375,20 +504,33 @@ export default function App() {
     refreshCoals(tableId);
   };
 
-  const handleCheckoutTable = (tableId: string) => {
+  const handleCheckoutTable = (
+    tableId: string,
+    payment?: {
+      paymentMethod?: PaymentMethod;
+      cashPaid?: number;
+      cardPaid?: number;
+      splitWays?: number;
+    }
+  ) => {
     triggerHaptic(20);
     delete lastCoalAlertRef.current[tableId];
     delete lastStayAlertRef.current[tableId];
+    delete lastWarningAlertRef.current[tableId];
     if (alertBanner?.tableId === tableId) {
       setAlertBanner(null);
     }
-    checkoutTable(tableId);
+    checkoutTable(tableId, payment);
   };
 
   const handleUpgradeToVip = (tableId: string) => {
     triggerHaptic(18);
     delete lastStayAlertRef.current[tableId];
-    if (alertBanner?.tableId === tableId && alertBanner.kind === 'longstay') {
+    delete lastWarningAlertRef.current[tableId];
+    if (
+      alertBanner?.tableId === tableId &&
+      (alertBanner.kind === 'longstay' || alertBanner.kind === 'expiring')
+    ) {
       setAlertBanner(null);
     }
     upgradeToVip(tableId);
@@ -398,6 +540,7 @@ export default function App() {
     triggerHaptic(24);
     lastCoalAlertRef.current = {};
     lastStayAlertRef.current = {};
+    lastWarningAlertRef.current = {};
     setAlertBanner(null);
     setSelectedTableId(null);
     return batchOutShift();
@@ -520,6 +663,27 @@ export default function App() {
                   Coals Done
                 </button>
               )}
+              {(alertBanner.kind === 'longstay' ||
+                alertBanner.kind === 'expiring') &&
+                alertBanner.tableId &&
+                (() => {
+                  const bannerTable = tables.find(
+                    (t) => t.id === alertBanner.tableId
+                  );
+                  const upgradeOpt = bannerTable
+                    ? getVipUpgradeOption(getTableSeatingTier(bannerTable).id)
+                    : null;
+                  return upgradeOpt ? (
+                    <button
+                      type="button"
+                      onClick={() => handleUpgradeToVip(alertBanner.tableId)}
+                      className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-fuchsia-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-400 whitespace-nowrap"
+                    >
+                      <Crown className="h-3.5 w-3.5" />
+                      {upgradeOpt.shortLabel} +${upgradeOpt.price}
+                    </button>
+                  ) : null;
+                })()}
               <button
                 type="button"
                 onClick={() => setAlertBanner(null)}
@@ -548,6 +712,7 @@ export default function App() {
               setIsEditorOpen(true);
             }}
             onMoveTable={moveTable}
+            onRequireManagerPin={requireManagerPin}
           />
         )}
 
@@ -559,6 +724,7 @@ export default function App() {
             onRefreshCoals={handleRefreshCoals}
             onOpenFlavorManager={() => setIsFlavorManagerOpen(true)}
             onPrintOrder={(table, order) => openKitchenPrint(table, [order])}
+            onQuickPrintOrder={(table, order) => handleQuickPrint(table, [order])}
           />
         )}
 
@@ -571,7 +737,11 @@ export default function App() {
               setExportBatchTarget(batch ?? null);
               setIsExportDocsOpen(true);
             }}
-            onOpenBatchOut={() => setIsBatchOutOpen(true)}
+            onOpenBatchOut={() =>
+              requireManagerPin('close all tables & batch out', () =>
+                setIsBatchOutOpen(true)
+              )
+            }
           />
         )}
       </main>
@@ -631,6 +801,7 @@ export default function App() {
       {/* Modals & Sheets */}
       <TableDetailSheet
         table={selectedTable}
+        allTables={tables}
         settings={settings}
         flavors={flavors}
         onClose={() => setSelectedTableId(null)}
@@ -640,10 +811,17 @@ export default function App() {
         onUpdateOrderFlavors={updateOrderFlavors}
         onUpdateTableNumber={updateTableNumber}
         onPrintKitchenTicket={openKitchenPrint}
+        onQuickPrintKitchenTicket={handleQuickPrint}
         onRefreshCoals={handleRefreshCoals}
         onCheckoutTable={handleCheckoutTable}
+        onTransferTable={(fromId, toId, upgrade) => {
+          triggerHaptic(16);
+          transferTable(fromId, toId, upgrade);
+          setSelectedTableId(toId);
+        }}
         onUpgradeToVip={handleUpgradeToVip}
         onOpenFlavorManager={() => setIsFlavorManagerOpen(true)}
+        onRequireManagerPin={requireManagerPin}
       />
 
       <TableEditorModal
@@ -707,6 +885,26 @@ export default function App() {
         onUpdateSettings={updateSettings}
         onSaveTableNumber={updateTableNumber}
         onSystemPrint={handleSystemPrint}
+        onPrinted={() => {
+          if (kitchenPrintMeta && kitchenPrintMeta.orderIds.length > 0) {
+            markOrdersPrinted(
+              kitchenPrintMeta.tableId,
+              kitchenPrintMeta.orderIds
+            );
+          }
+        }}
+      />
+
+      <PinPromptModal
+        visible={Boolean(pendingPinAction)}
+        expectedPin={settings.managerPin || ''}
+        actionLabel={pendingPinAction?.actionLabel || ''}
+        onClose={() => setPendingPinAction(null)}
+        onSuccess={() => {
+          const run = pendingPinAction?.action;
+          setPendingPinAction(null);
+          run?.();
+        }}
       />
       </div>
       <ThermalReceiptPrintView

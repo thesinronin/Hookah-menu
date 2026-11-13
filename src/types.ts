@@ -14,6 +14,7 @@ export type SeatingTierId =
   | 'downstairs';
 export type PrinterMode = 'system' | 'network' | 'bluetooth';
 export type PrinterPaperWidth = '80mm' | '58mm';
+export type PaymentMethod = 'card' | 'cash' | 'split';
 
 export interface MenuItem {
   id: string;
@@ -43,6 +44,7 @@ export interface OrderItem {
   addedBy?: string;
   prepStatus: PrepStatus;
   orderedAt: number;
+  kitchenPrintedAt?: number;
 }
 
 export interface LoungeTable {
@@ -83,6 +85,10 @@ export interface CompletedSession {
   subtotal: number;
   tax: number;
   total: number;
+  paymentMethod?: PaymentMethod;
+  cashPaid?: number;
+  cardPaid?: number;
+  splitWays?: number;
 }
 
 export interface StaffProfile {
@@ -107,6 +113,7 @@ export interface LoungeSettings {
   kitchenPrinterPort?: number;
   kitchenPrinterWidth?: PrinterPaperWidth;
   autoPrintKitchenTicket?: boolean;
+  managerPin?: string;
 }
 
 export interface KitchenTicketItem {
@@ -139,6 +146,8 @@ export interface BatchReport {
   subtotal: number;
   tax: number;
   total: number;
+  cashTotal?: number;
+  cardTotal?: number;
   sessions: CompletedSession[];
 }
 

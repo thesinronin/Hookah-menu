@@ -19,6 +19,17 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
   onOpenBatchOut,
 }) => {
   const closedRevenue = history.reduce((sum, s) => sum + s.total, 0);
+  const closedCash = history.reduce(
+    (sum, s) => sum + (s.cashPaid ?? (s.paymentMethod === 'cash' ? s.total : 0)),
+    0
+  );
+  const closedCard = history.reduce(
+    (sum, s) =>
+      sum +
+      (s.cardPaid ??
+        (s.paymentMethod === 'cash' ? 0 : s.total - (s.cashPaid ?? 0))),
+    0
+  );
   const openTablesCount = tables.filter((t) => t.status === 'occupied').length;
   const openRevenue = tables
     .filter((t) => t.status === 'occupied')
@@ -140,6 +151,9 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
           <p className="mt-1.5 font-mono text-2xl font-bold text-cyan-300 tabular-nums">
             ${closedRevenue.toFixed(2)}
           </p>
+          <p className="mt-1 font-mono text-[11px] text-slate-400 tabular-nums">
+            Cash ${closedCash.toFixed(0)} · Card ${closedCard.toFixed(0)}
+          </p>
         </div>
         <div className="rounded-2xl border cyber-surface p-4">
           <p className="text-xs text-slate-400">Active Open Tabs</p>
@@ -249,9 +263,19 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
                     {s.serverName ? ` · Server: ${s.serverName}` : ''}
                   </p>
                 </div>
-                <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums">
-                  ${s.total.toFixed(2)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md border border-cyan-500/25 bg-[#060913] px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-cyan-300">
+                    {s.paymentMethod === 'cash'
+                      ? 'Cash'
+                      : s.paymentMethod === 'split'
+                      ? 'Split'
+                      : 'Card'}
+                    {s.splitWays && s.splitWays > 1 ? ` · ${s.splitWays}x` : ''}
+                  </span>
+                  <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums">
+                    ${s.total.toFixed(2)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

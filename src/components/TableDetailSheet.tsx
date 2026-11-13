@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowRightLeft,
   Check,
+  CheckCircle2,
   Crown,
   Flame,
   Minus,
@@ -17,8 +19,8 @@ import {
   MENU_ITEMS,
   SEATING_TIERS,
   SEATING_TIER_LIST,
-  VIP_UPGRADE_PRICE,
   getTableSeatingTier,
+  getVipUpgradeOption,
 } from '../data/menu';
 import type {
   FlavorOption,
@@ -27,12 +29,14 @@ import type {
   MenuCategory,
   MenuItem,
   OrderItem,
+  PaymentMethod,
   SeatingTierId,
 } from '../types';
 import { TimerDisplay } from './TimerDisplay';
 
 interface TableDetailSheetProps {
   table: LoungeTable | null;
+  allTables: LoungeTable[];
   settings: LoungeSettings;
   flavors: FlavorOption[];
   onClose: () => void;
@@ -50,14 +54,26 @@ interface TableDetailSheetProps {
   onUpdateOrderFlavors: (tableId: string, orderId: string, flavors: string[]) => void;
   onUpdateTableNumber: (tableId: string, tableNumber: string) => void;
   onPrintKitchenTicket: (table: LoungeTable, orders?: OrderItem[]) => void;
+  onQuickPrintKitchenTicket: (table: LoungeTable, orders?: OrderItem[]) => void;
   onRefreshCoals: (tableId: string) => void;
-  onCheckoutTable: (tableId: string) => void;
+  onCheckoutTable: (
+    tableId: string,
+    payment?: {
+      paymentMethod?: PaymentMethod;
+      cashPaid?: number;
+      cardPaid?: number;
+      splitWays?: number;
+    }
+  ) => void;
+  onTransferTable: (fromTableId: string, toTableId: string, upgradeToVip: boolean) => void;
   onUpgradeToVip: (tableId: string) => void;
   onOpenFlavorManager: () => void;
+  onRequireManagerPin: (actionLabel: string, action: () => void) => void;
 }
 
 export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   table,
+  allTables,
   settings,
   flavors,
   onClose,
@@ -67,15 +83,24 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   onUpdateOrderFlavors,
   onUpdateTableNumber,
   onPrintKitchenTicket,
+  onQuickPrintKitchenTicket,
   onRefreshCoals,
   onCheckoutTable,
+  onTransferTable,
   onUpgradeToVip,
   onOpenFlavorManager,
+  onRequireManagerPin,
 }) => {
   const [guestName, setGuestName] = useState('');
   const [seatTableNumber, setSeatTableNumber] = useState('');
   const [isEditingTableNum, setIsEditingTableNum] = useState(false);
   const [tableNumDraft, setTableNumDraft] = useState('');
+  const [isMovingTable, setIsMovingTable] = useState(false);
+  const [moveTargetId, setMoveTargetId] = useState('');
+  const [moveUpgradeVip, setMoveUpgradeVip] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card');
+  const [splitCashInput, setSplitCashInput] = useState('');
+  const [splitWays, setSplitWays] = useState(1);
   const [seatingTier, setSeatingTier] = useState<SeatingTierId>('downstairs');
   const [extraPeopleCount, setExtraPeopleCount] = useState(0);
   const [addExtraCount, setAddExtraCount] = useState(1);
@@ -109,6 +134,12 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
     setSeatTableNumber(table?.tableNumber || '');
     setIsEditingTableNum(false);
     setTableNumDraft(table?.tableNumber || '');
+    setIsMovingTable(false);
+    setMoveTargetId('');
+    setMoveUpgradeVip(false);
+    setPaymentMethod('card');
+    setSplitCashInput('');
+    setSplitWays(1);
     setSeatingTier(defaultTier);
     setSeatIceHose(false);
     setSeatUpgradeVip(false);
@@ -136,6 +167,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   if (!table) return null;
 
   const activeTier = getTableSeatingTier(table);
+  const activeUpgradeOpt = getVipUpgradeOption(activeTier.id);
 
   const toggleFlavorInList = (
     flavor: string,
@@ -193,7 +225,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   };
 
   const handleSelectMenuItem = (item: MenuItem) => {
-    if (item.id === 'r-upgrade-vip') {
+    if (item.id === 'r-upgrade-vip' || item.id === 'r-upgrade-vip-allday') {
       onUpgradeToVip(table.id);
       return;
     }
@@ -249,14 +281,34 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
       setConfirmCheckout(true);
       return;
     }
-    onCheckoutTable(table.id);
+    const parsedCash =
+      paymentMethod === 'cash'
+        ? totals.total
+        : paymentMethod === 'split'
+        ? Math.max(0, Math.min(totals.total, Number(splitCashInput) || 0))
+        : 0;
+    const cardPaid =
+      paymentMethod === 'card'
+        ? totals.total
+        : Math.max(0, Number((totals.total - parsedCash).toFixed(2)));
+    onCheckoutTable(table.id, {
+      paymentMethod,
+      cashPaid: parsedCash,
+      cardPaid,
+      splitWays: splitWays > 1 ? splitWays : undefined,
+    });
     setConfirmCheckout(false);
     onClose();
   };
 
   const filteredMenu = MENU_ITEMS.filter((m) => {
     if (m.category !== activeCategory) return false;
-    if (m.id === 'r-upgrade-vip' && activeTier.id === 'vip_allday') return false;
+    if (m.id === 'r-upgrade-vip') {
+      return activeUpgradeOpt?.menuItemId === 'r-upgrade-vip';
+    }
+    if (m.id === 'r-upgrade-vip-allday') {
+      return activeUpgradeOpt?.menuItemId === 'r-upgrade-vip-allday';
+    }
     return true;
   });
 
@@ -382,7 +434,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           if (tier.perPersonService) {
                             setExtraPeopleCount(0);
                           }
-                          if (tier.id !== 'vip_onetime' && tier.id !== 'bar_onetime') {
+                          if (!getVipUpgradeOption(tier.id)) {
                             setSeatUpgradeVip(false);
                           }
                         }}
@@ -413,9 +465,8 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
               {(() => {
                 const chosen = SEATING_TIERS[seatingTier];
-                const isOneTimeTier =
-                  chosen.id === 'vip_onetime' || chosen.id === 'bar_onetime';
-                const upgradeVipApplied = isOneTimeTier && seatUpgradeVip;
+                const seatUpgradeOpt = getVipUpgradeOption(chosen.id);
+                const upgradeVipApplied = Boolean(seatUpgradeOpt && seatUpgradeVip);
                 const extraPeople = chosen.perPersonService ? 0 : extraPeopleCount;
                 const computedPartySize = chosen.perPersonService
                   ? 1
@@ -423,7 +474,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                 const baseTabPrice = chosen.basePrice;
                 const extraTotal = extraPeople * chosen.extraPersonPrice;
                 const iceTotal = seatIceHose ? chosen.iceHosePrice : 0;
-                const upgradeTotal = upgradeVipApplied ? VIP_UPGRADE_PRICE : 0;
+                const upgradeTotal = upgradeVipApplied && seatUpgradeOpt ? seatUpgradeOpt.price : 0;
                 const openingTotal =
                   baseTabPrice + extraTotal + iceTotal + upgradeTotal;
 
@@ -489,11 +540,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                         </div>
                       )}
 
-                      {upgradeVipApplied && (
+                      {upgradeVipApplied && seatUpgradeOpt && (
                         <div className="flex items-center justify-between text-amber-300">
-                          <span>Upgrade to VIP</span>
+                          <span>{seatUpgradeOpt.label}</span>
                           <span className="font-mono font-semibold tabular-nums">
-                            +${VIP_UPGRADE_PRICE.toFixed(2)}
+                            +${seatUpgradeOpt.price.toFixed(2)}
                           </span>
                         </div>
                       )}
@@ -550,7 +601,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                       </span>
                     </button>
 
-                    {isOneTimeTier && (
+                    {seatUpgradeOpt && (
                       <button
                         type="button"
                         onClick={() => setSeatUpgradeVip((v) => !v)}
@@ -562,7 +613,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                       >
                         <span className="inline-flex items-center gap-2">
                           <Crown className="h-4 w-4 text-fuchsia-400" />
-                          Upgrade to VIP (+${VIP_UPGRADE_PRICE})
+                          {seatUpgradeOpt.label} (+${seatUpgradeOpt.price})
                         </span>
                         <span className="text-xs font-mono">
                           {seatUpgradeVip ? 'ADDED' : 'OPTIONAL'}
@@ -612,15 +663,15 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           });
                         }
 
-                        if (upgradeVipApplied) {
+                        if (upgradeVipApplied && seatUpgradeOpt) {
                           initialOrders.push({
                             id: `ord-${now}-${Math.random().toString(36).slice(2, 7)}-vip`,
-                            menuItemId: 'r-upgrade-vip',
-                            name: 'Upgrade to VIP',
+                            menuItemId: seatUpgradeOpt.menuItemId,
+                            name: seatUpgradeOpt.label,
                             category: 'refill',
-                            unitPrice: VIP_UPGRADE_PRICE,
+                            unitPrice: seatUpgradeOpt.price,
                             quantity: 1,
-                            notes: `Upgraded ${chosen.shortLabel} to VIP`,
+                            notes: `Upgraded ${chosen.shortLabel} to All Day VIP`,
                             prepStatus: 'served',
                             orderedAt: now,
                           });
@@ -791,25 +842,115 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                       · Ice ${activeTier.iceHosePrice}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => onPrintKitchenTicket(table)}
-                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-cyan-400/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/25 whitespace-nowrap"
+                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/25 whitespace-nowrap"
                     >
                       <Printer className="h-3.5 w-3.5 text-cyan-300" />
-                      Print Kitchen
+                      Print
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const avail = allTables.filter(
+                          (t) => t.status === 'available' && t.id !== table.id
+                        );
+                        setMoveTargetId(avail[0]?.id || '');
+                        setMoveUpgradeVip(
+                          Boolean(avail[0]?.zone === 'VIP' && activeUpgradeOpt)
+                        );
+                        setIsMovingTable((v) => !v);
+                      }}
+                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-fuchsia-400/40 bg-fuchsia-500/15 px-2.5 py-1.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/25 whitespace-nowrap"
+                    >
+                      <ArrowRightLeft className="h-3.5 w-3.5 text-fuchsia-300" />
+                      Move
                     </button>
                     <button
                       type="button"
                       onClick={() => onRefreshCoals(table.id)}
-                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 whitespace-nowrap"
+                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-500/15 px-2.5 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 whitespace-nowrap"
                     >
                       <Flame className="h-3.5 w-3.5 text-amber-400" />
                       Coals
                     </button>
                   </div>
                 </div>
+
+                {isMovingTable && (() => {
+                  const availableDest = allTables.filter(
+                    (t) => t.status === 'available' && t.id !== table.id
+                  );
+                  const destTable = availableDest.find((t) => t.id === moveTargetId);
+                  return (
+                    <div className="rounded-xl border border-fuchsia-500/35 bg-[#0B101D] p-3 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-fuchsia-200">
+                          Move Party &amp; Tab to Open Table
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsMovingTable(false)}
+                          className="text-slate-400 hover:text-slate-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {availableDest.length === 0 ? (
+                        <p className="text-xs text-slate-400">
+                          No available tables right now.
+                        </p>
+                      ) : (
+                        <>
+                          <select
+                            value={moveTargetId}
+                            onChange={(e) => {
+                              const nextId = e.target.value;
+                              setMoveTargetId(nextId);
+                              const nextT = availableDest.find((t) => t.id === nextId);
+                              if (nextT?.zone === 'VIP' && activeUpgradeOpt) {
+                                setMoveUpgradeVip(true);
+                              }
+                            }}
+                            className="w-full min-h-[42px] rounded-xl border border-cyan-500/30 bg-[#060913] px-3 py-2 text-xs font-semibold text-slate-100 focus:border-cyan-400 focus:outline-none"
+                          >
+                            {availableDest.map((dest) => (
+                              <option key={dest.id} value={dest.id}>
+                                {dest.floor} · {dest.tableNumber ? `#${dest.tableNumber} · ` : ''}
+                                {dest.name} ({dest.zone} · {dest.seats}p)
+                              </option>
+                            ))}
+                          </select>
+                          {activeUpgradeOpt && (
+                            <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={moveUpgradeVip}
+                                onChange={(e) => setMoveUpgradeVip(e.target.checked)}
+                                className="h-4 w-4 rounded border-fuchsia-500/40 bg-slate-900 accent-fuchsia-400"
+                              />
+                              Apply {activeUpgradeOpt.label} (+${activeUpgradeOpt.price})
+                              {destTable?.zone === 'VIP' ? ' · VIP Booth' : ''}
+                            </label>
+                          )}
+                          <button
+                            type="button"
+                            disabled={!moveTargetId}
+                            onClick={() => {
+                              onTransferTable(table.id, moveTargetId, moveUpgradeVip);
+                              setIsMovingTable(false);
+                            }}
+                            className="min-h-[42px] w-full rounded-xl bg-fuchsia-500 px-3 text-xs font-bold text-white hover:bg-fuchsia-400 disabled:opacity-40"
+                          >
+                            Confirm Move Table
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Inline Table # Input / Editor */}
                 <div className="flex items-center justify-between gap-2 border-t border-cyan-500/15 pt-2">
@@ -868,17 +1009,18 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                 </div>
               </div>
 
-              {/* Upgrade One Time to VIP (+$200) */}
-              {(activeTier.id === 'vip_onetime' ||
-                activeTier.id === 'bar_onetime') && (
+              {/* Tier-Specific Upgrade to All Day VIP ($200 Downstairs/Bar, $150 One Time VIP) */}
+              {activeUpgradeOpt && (
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3.5 py-3 cyber-glow-magenta">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-fuchsia-200">
                       <Crown className="h-4 w-4 shrink-0 text-fuchsia-400" />
-                      <span>Upgrade to VIP</span>
+                      <span>{activeUpgradeOpt.label}</span>
                     </div>
                     <p className="mt-0.5 text-[11px] text-slate-300">
-                      Lift time limit &amp; unlock VIP refills (+${VIP_UPGRADE_PRICE})
+                      {activeTier.id === 'vip_onetime'
+                        ? `Lift 2h limit & unlock VIP refills (+$${activeUpgradeOpt.price})`
+                        : `Upgrade to All Day VIP & unlock VIP refills (+$${activeUpgradeOpt.price})`}
                     </p>
                   </div>
                   <button
@@ -886,7 +1028,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                     onClick={() => onUpgradeToVip(table.id)}
                     className="min-h-[44px] shrink-0 rounded-xl bg-fuchsia-500 px-4 text-xs font-bold text-white transition-colors hover:bg-fuchsia-400 whitespace-nowrap"
                   >
-                    Upgrade +${VIP_UPGRADE_PRICE}
+                    Upgrade +${activeUpgradeOpt.price}
                   </button>
                 </div>
               )}
@@ -1046,12 +1188,18 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => onPrintKitchenTicket(table, [order])}
+                                onClick={() => onQuickPrintKitchenTicket(table, [order])}
                                 className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/20"
                               >
                                 <Printer className="h-3 w-3" />
                                 Print
                               </button>
+                              {order.kitchenPrintedAt && (
+                                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                                  <CheckCircle2 className="h-2.5 w-2.5" />
+                                  Printed
+                                </span>
+                              )}
                             </div>
                           )}
                           {order.notes && (
@@ -1086,7 +1234,12 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             type="button"
-                            onClick={() => onUpdateQty(table.id, order.id, -1)}
+                            onClick={() =>
+                              onRequireManagerPin(
+                                `reduce or remove ${order.name}`,
+                                () => onUpdateQty(table.id, order.id, -1)
+                              )
+                            }
                             className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-500/25 bg-[#0B101D] text-slate-200 hover:border-cyan-400"
                             aria-label={`Decrease quantity of ${order.name}`}
                           >
@@ -1115,9 +1268,90 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
         {/* Sticky Checkout Footer for Occupied Table */}
         {table.status === 'occupied' && !customizingItem && (
-          <div className="border-t border-cyan-500/20 bg-[#060913] px-5 py-4 pb-safe space-y-3">
-            <div className="flex justify-between text-base font-bold text-slate-100">
-              <span>Total Due</span>
+          <div className="border-t border-cyan-500/20 bg-[#060913] px-5 py-3.5 pb-safe space-y-2.5">
+            {/* Payment Method & Split Check */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="grid grid-cols-3 gap-1 rounded-lg border border-cyan-500/20 bg-[#0A0F1C] p-0.5">
+                {(['card', 'cash', 'split'] as PaymentMethod[]).map((method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod(method);
+                      if (method === 'split' && !splitCashInput) {
+                        setSplitCashInput((totals.total / 2).toFixed(2));
+                      }
+                    }}
+                    className={`min-h-[34px] rounded-md px-2.5 text-[11px] font-bold uppercase transition-colors ${
+                      paymentMethod === method
+                        ? 'bg-cyan-400 text-slate-950'
+                        : 'text-slate-400 hover:text-cyan-200'
+                    }`}
+                  >
+                    {method}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-slate-400 mr-1">Split:</span>
+                {[1, 2, 3, 4].map((ways) => (
+                  <button
+                    key={ways}
+                    type="button"
+                    onClick={() => setSplitWays(ways)}
+                    className={`min-h-[34px] min-w-[32px] rounded-md border px-2 font-mono text-[11px] font-bold ${
+                      splitWays === ways
+                        ? 'border-fuchsia-400 bg-fuchsia-500/20 text-fuchsia-200'
+                        : 'border-cyan-500/20 bg-[#0A0F1C] text-slate-400'
+                    }`}
+                  >
+                    {ways}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {paymentMethod === 'split' && (
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-cyan-500/20 bg-[#0A0F1C] px-3 py-2 text-xs">
+                <label className="flex items-center justify-between gap-2 text-slate-300">
+                  <span>Cash $</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={totals.total}
+                    step="0.01"
+                    value={splitCashInput}
+                    onChange={(e) => setSplitCashInput(e.target.value)}
+                    className="w-20 rounded border border-cyan-500/30 bg-[#060913] px-2 py-1 text-right font-mono font-bold text-emerald-300 focus:outline-none"
+                  />
+                </label>
+                <div className="flex items-center justify-between text-slate-300">
+                  <span>Card $</span>
+                  <span className="font-mono font-bold text-cyan-300 tabular-nums">
+                    $
+                    {Math.max(
+                      0,
+                      totals.total -
+                        Math.max(
+                          0,
+                          Math.min(totals.total, Number(splitCashInput) || 0)
+                        )
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-baseline justify-between text-base font-bold text-slate-100">
+              <span>
+                Total Due
+                {splitWays > 1 && (
+                  <span className="ml-2 font-mono text-xs font-semibold text-fuchsia-300">
+                    (${(totals.total / splitWays).toFixed(2)} / person)
+                  </span>
+                )}
+              </span>
               <span className="font-mono text-cyan-300 tabular-nums">
                 ${totals.total.toFixed(2)}
               </span>
@@ -1144,7 +1378,7 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
               >
                 <Receipt className="h-4 w-4" />
                 {confirmCheckout
-                  ? `Confirm Close ($${totals.total.toFixed(2)})`
+                  ? `Confirm ${paymentMethod.toUpperCase()} ($${totals.total.toFixed(2)})`
                   : 'Close Tab & Clear Table'}
               </button>
             </div>

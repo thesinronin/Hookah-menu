@@ -6,7 +6,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createInitialFlavors, createInitialTables, DEFAULT_SETTINGS } from './src/data/menu.ts';
+import {
+  createInitialFlavors,
+  createInitialTables,
+  DEFAULT_SETTINGS,
+  getTableSeatingTier,
+  getVipUpgradeOption,
+} from './src/data/menu.ts';
 import { buildEscPosBuffer } from './src/services/kitchenPrinter.ts';
 import type {
   ActiveStaffMember,
@@ -18,6 +24,7 @@ import type {
   LoungeStateSnapshot,
   LoungeTable,
   OrderItem,
+  PaymentMethod,
   PrepStatus,
   PrinterMode,
   PrinterPaperWidth,
@@ -157,6 +164,9 @@ async function startServer() {
         subtotal: sub,
         tax,
         total: sub,
+        paymentMethod: 'card',
+        cashPaid: 0,
+        cardPaid: sub,
       });
 
       table.status = 'available';
@@ -175,6 +185,17 @@ async function startServer() {
     const subtotal = allDaySessions.reduce((s, x) => s + x.subtotal, 0);
     const tax = allDaySessions.reduce((s, x) => s + x.tax, 0);
     const total = allDaySessions.reduce((s, x) => s + x.total, 0);
+    const cashTotal = allDaySessions.reduce(
+      (s, x) => s + (x.cashPaid ?? (x.paymentMethod === 'cash' ? x.total : 0)),
+      0
+    );
+    const cardTotal = allDaySessions.reduce(
+      (s, x) =>
+        s +
+        (x.cardPaid ??
+          (x.paymentMethod === 'cash' ? 0 : x.total - (x.cashPaid ?? 0))),
+      0
+    );
 
     const report: BatchReport = {
       id: `batch-${now}`,
@@ -185,6 +206,8 @@ async function startServer() {
       subtotal,
       tax,
       total,
+      cashTotal,
+      cardTotal,
       sessions: allDaySessions,
     };
 
@@ -452,13 +475,31 @@ async function startServer() {
           case 'table:upgradeVip': {
             const tableId = String(msg.tableId || '');
             const item = msg.item as OrderItem | undefined;
-            if (!item || !item.id) break;
 
             const table = state.tables.find((t) => t.id === tableId);
             if (!table || table.status !== 'occupied') break;
 
-            if (!table.orders.some((o) => o.id === item.id)) {
-              table.orders.push(item);
+            const currentTier = getTableSeatingTier(table);
+            const upgradeOpt = getVipUpgradeOption(currentTier.id);
+            if (!upgradeOpt) break;
+
+            const upgradeItem: OrderItem = {
+              id:
+                item?.id ||
+                `ord-${now}-${Math.random().toString(36).slice(2, 7)}-vip`,
+              menuItemId: upgradeOpt.menuItemId,
+              name: upgradeOpt.label,
+              category: 'refill',
+              unitPrice: upgradeOpt.price,
+              quantity: 1,
+              notes: item?.notes || `Upgraded ${currentTier.shortLabel} to All Day VIP`,
+              addedBy: item?.addedBy || 'Staff',
+              prepStatus: 'served',
+              orderedAt: item?.orderedAt || now,
+            };
+
+            if (!table.orders.some((o) => o.id === upgradeItem.id)) {
+              table.orders.push(upgradeItem);
             }
             table.seatingTier = 'vip_allday';
             table.timeLimitMinutes = undefined;
@@ -497,6 +538,95 @@ async function startServer() {
             break;
           }
 
+          case 'table:markPrinted': {
+            const tableId = String(msg.tableId || '');
+            const orderIds = Array.isArray(msg.orderIds)
+              ? new Set((msg.orderIds as unknown[]).map((id) => String(id || '')))
+              : null;
+            const table = state.tables.find((t) => t.id === tableId);
+            if (!table) break;
+
+            table.orders = table.orders.map((o) =>
+              !orderIds || orderIds.size === 0 || orderIds.has(o.id)
+                ? { ...o, kitchenPrintedAt: now }
+                : o
+            );
+            table.updatedAt = now;
+
+            scheduleSave();
+            broadcast(wss, { type: 'table:updated', table });
+            break;
+          }
+
+          case 'table:transfer': {
+            const fromTableId = String(msg.fromTableId || '');
+            const toTableId = String(msg.toTableId || '');
+            const upgradeToVipFlag = Boolean(msg.upgradeToVip);
+            const staffName = String(msg.staffName || 'Staff').trim() || 'Staff';
+
+            const fromTable = state.tables.find((t) => t.id === fromTableId);
+            const toTable = state.tables.find((t) => t.id === toTableId);
+            if (
+              !fromTable ||
+              !toTable ||
+              fromTable.id === toTable.id ||
+              fromTable.status !== 'occupied' ||
+              toTable.status !== 'available'
+            ) {
+              break;
+            }
+
+            const movedOrders = [...fromTable.orders];
+            const currentTier = getTableSeatingTier(fromTable);
+            const upgradeOpt = getVipUpgradeOption(currentTier.id);
+            let nextTier = fromTable.seatingTier;
+            let nextLimit = fromTable.timeLimitMinutes;
+
+            if (upgradeToVipFlag && upgradeOpt) {
+              movedOrders.push({
+                id: `ord-${now}-${Math.random().toString(36).slice(2, 7)}-vip`,
+                menuItemId: upgradeOpt.menuItemId,
+                name: upgradeOpt.label,
+                category: 'refill',
+                unitPrice: upgradeOpt.price,
+                quantity: 1,
+                notes: `Transferred & upgraded from ${fromTable.name}`,
+                addedBy: staffName,
+                prepStatus: 'served',
+                orderedAt: now,
+              });
+              nextTier = 'vip_allday';
+              nextLimit = undefined;
+            }
+
+            toTable.status = 'occupied';
+            toTable.seatingTier = nextTier;
+            toTable.timeLimitMinutes = nextLimit;
+            toTable.partySize = fromTable.partySize;
+            toTable.guestName = fromTable.guestName;
+            toTable.serverName = fromTable.serverName || staffName;
+            toTable.seatedAt = fromTable.seatedAt || now;
+            toTable.lastCoalCheckAt = fromTable.lastCoalCheckAt || now;
+            toTable.orders = movedOrders;
+            toTable.updatedAt = now;
+
+            fromTable.status = 'available';
+            fromTable.seatingTier = undefined;
+            fromTable.timeLimitMinutes = undefined;
+            fromTable.partySize = undefined;
+            fromTable.guestName = undefined;
+            fromTable.serverName = undefined;
+            fromTable.seatedAt = undefined;
+            fromTable.lastCoalCheckAt = undefined;
+            fromTable.orders = [];
+            fromTable.updatedAt = now;
+
+            scheduleSave();
+            broadcast(wss, { type: 'table:updated', table: fromTable });
+            broadcast(wss, { type: 'table:updated', table: toTable });
+            break;
+          }
+
           case 'table:checkout': {
             const tableId = String(msg.tableId || '');
             const staffName = String(msg.staffName || 'Staff');
@@ -508,9 +638,29 @@ async function startServer() {
               0
             );
             const tax = 0;
+            const rawMethod = String(msg.paymentMethod || 'card');
+            const paymentMethod: PaymentMethod =
+              rawMethod === 'cash' || rawMethod === 'split' ? rawMethod : 'card';
+            const cashPaid =
+              paymentMethod === 'cash'
+                ? subtotal
+                : paymentMethod === 'split'
+                ? Math.max(0, Math.min(subtotal, Number(msg.cashPaid) || 0))
+                : 0;
+            const cardPaid =
+              paymentMethod === 'card'
+                ? subtotal
+                : Math.max(0, Number((subtotal - cashPaid).toFixed(2)));
+            const splitWays =
+              typeof msg.splitWays === 'number' && msg.splitWays > 1
+                ? Math.min(20, Math.round(msg.splitWays))
+                : undefined;
+
             const session: CompletedSession = {
               id: `sess-${now}-${table.id}`,
-              tableName: table.name,
+              tableName: table.tableNumber
+                ? `#${table.tableNumber} · ${table.name}`
+                : table.name,
               floor: table.floor,
               zone: table.zone,
               partySize: table.partySize || 1,
@@ -526,6 +676,10 @@ async function startServer() {
               subtotal,
               tax,
               total: subtotal,
+              paymentMethod,
+              cashPaid,
+              cardPaid,
+              splitWays,
             };
 
             state.history.unshift(session);
@@ -658,6 +812,9 @@ async function startServer() {
               ),
               kitchenPrinterWidth: widthVal,
               autoPrintKitchenTicket: Boolean(nextSettings.autoPrintKitchenTicket),
+              managerPin: String(nextSettings.managerPin || '')
+                .replace(/\D/g, '')
+                .slice(0, 6),
             };
             scheduleSave();
             broadcast(wss, { type: 'settings:updated', settings: state.settings });

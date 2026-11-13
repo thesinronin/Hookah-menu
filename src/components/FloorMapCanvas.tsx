@@ -40,11 +40,22 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
     table.lastCoalCheckAt !== undefined &&
     (now - table.lastCoalCheckAt) / 60_000 >= settings.coalAlertMinutes;
 
-  const isLongStay =
+  const elapsedMins =
+    isOccupied && table.seatedAt !== undefined
+      ? (now - table.seatedAt) / 60_000
+      : 0;
+  const effectiveLimit = table.timeLimitMinutes ?? settings.longStayAlertMinutes;
+  const isLongStay = isOccupied && table.seatedAt !== undefined && elapsedMins >= effectiveLimit;
+  const remainingMins =
+    isOccupied && table.timeLimitMinutes !== undefined
+      ? Math.max(0, Math.ceil(table.timeLimitMinutes - elapsedMins))
+      : null;
+  const isExpiringSoon =
     isOccupied &&
-    table.seatedAt !== undefined &&
-    (now - table.seatedAt) / 60_000 >=
-      (table.timeLimitMinutes ?? settings.longStayAlertMinutes);
+    table.timeLimitMinutes !== undefined &&
+    !isLongStay &&
+    remainingMins !== null &&
+    remainingMins <= 15;
 
   const total = table.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0);
   const hookahCount = table.orders
@@ -126,7 +137,7 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
 
   const borderAndBg = isEditing
     ? 'border-dashed border-cyan-400/80 bg-[#0F1B2E] hover:bg-[#15243D]'
-    : isCoalDue
+    : isCoalDue || isExpiringSoon
     ? 'border-amber-400/90 bg-[#201609] hover:bg-[#291C0B]'
     : isLongStay
     ? 'border-fuchsia-500/85 bg-[#200C23] hover:bg-[#2A102E] cyber-glow-magenta'
@@ -181,7 +192,7 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
         <div className="mt-1 flex flex-col items-center">
           <span
             className={`font-mono text-xs font-semibold tabular-nums ${
-              isCoalDue
+              isCoalDue || isExpiringSoon
                 ? 'text-amber-300'
                 : isLongStay
                 ? 'text-fuchsia-300'
@@ -189,6 +200,7 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
             }`}
           >
             {formatDuration(now - table.seatedAt)}
+            {isExpiringSoon ? ` (${remainingMins}m)` : ''}
           </span>
           <span className="mt-0.5 font-mono text-[11px] text-cyan-200/90 tabular-nums">
             ${total.toFixed(0)} · {hookahCount} bowl{hookahCount === 1 ? '' : 's'}

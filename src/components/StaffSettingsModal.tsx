@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Monitor, Printer, RotateCcw, Sparkles, Users, Volume2, Wifi, X } from 'lucide-react';
+import { Lock, Monitor, Printer, RotateCcw, Sparkles, Users, Volume2, Wifi, X } from 'lucide-react';
 import type {
   ActiveStaffMember,
   AlertMode,
@@ -63,6 +63,7 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
   const [autoPrint, setAutoPrint] = useState(
     Boolean(settings.autoPrintKitchenTicket)
   );
+  const [managerPin, setManagerPin] = useState(settings.managerPin || '');
   const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
     setPrinterPort(String(settings.kitchenPrinterPort || 9100));
     setPrinterWidth(settings.kitchenPrinterWidth || '80mm');
     setAutoPrint(Boolean(settings.autoPrintKitchenTicket));
+    setManagerPin(settings.managerPin || '');
     setConfirmReset(false);
   }, [visible, profile, settings]);
 
@@ -97,6 +99,7 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
       kitchenPrinterPort: Math.max(1, parseInt(printerPort, 10) || 9100),
       kitchenPrinterWidth: printerWidth,
       autoPrintKitchenTicket: autoPrint,
+      managerPin: managerPin.replace(/\D/g, '').slice(0, 6),
     });
     onClose();
   };
@@ -426,6 +429,39 @@ export const StaffSettingsModal: React.FC<StaffSettingsModalProps> = ({
                 />
                 Auto-print new LAN tickets
               </label>
+            </div>
+          </div>
+
+          {/* Manager PIN Lock */}
+          <div className="space-y-2 border-t border-cyan-500/20 pt-4">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-200/80">
+              <Lock className="h-3.5 w-3.5 text-fuchsia-400" />
+              Manager Security PIN (optional)
+            </span>
+            <p className="text-[11px] text-slate-400">
+              Locks Batch Out, Edit Floor Layout, and Voiding/Reducing Items across all devices. Leave blank to disable.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={managerPin}
+                onChange={(e) =>
+                  setManagerPin(e.target.value.replace(/\D/g, '').slice(0, 6))
+                }
+                placeholder="4–6 digit PIN (e.g. 1234)"
+                className="flex-1 min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2 font-mono text-sm tracking-widest text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+              />
+              {managerPin && (
+                <button
+                  type="button"
+                  onClick={() => setManagerPin('')}
+                  className="min-h-[44px] rounded-xl border border-cyan-500/25 px-3 text-xs font-semibold text-slate-400 hover:text-slate-100"
+                >
+                  Clear PIN
+                </button>
+              )}
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Flame, Printer, Sparkles } from 'lucide-react';
+import { CheckCircle2, Flame, Printer, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { FLOORS } from '../data/menu';
 import type {
   LoungeSettings,
@@ -16,6 +16,7 @@ interface HookahStationScreenProps {
   onRefreshCoals: (tableId: string) => void;
   onOpenFlavorManager: () => void;
   onPrintOrder: (table: LoungeTable, order: OrderItem) => void;
+  onQuickPrintOrder: (table: LoungeTable, order: OrderItem) => void;
 }
 
 export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
@@ -25,6 +26,7 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
   onRefreshCoals,
   onOpenFlavorManager,
   onPrintOrder,
+  onQuickPrintOrder,
 }) => {
   const [floorFilter, setFloorFilter] = useState<'All' | TableFloor>('All');
   const [now, setNow] = useState(() => Date.now());
@@ -209,17 +211,37 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
                           Note: {order.notes}
                         </p>
                       )}
+                      {order.kitchenPrintedAt && (
+                        <p className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Printed{' '}
+                          {new Date(order.kitchenPrintedAt).toLocaleTimeString(
+                            'en-US',
+                            { hour: 'numeric', minute: '2-digit' }
+                          )}
+                        </p>
+                      )}
                     </div>
 
-                    <div className="mt-4 flex items-center gap-2">
+                    <div className="mt-4 flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => onPrintOrder(table, order)}
+                        onClick={() => onQuickPrintOrder(table, order)}
                         className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-cyan-500/35 bg-[#060913] px-3 py-2.5 text-xs font-bold text-cyan-200 transition-colors hover:border-cyan-400 hover:bg-cyan-500/10 shrink-0"
-                        aria-label="Print kitchen ticket"
+                        title="1-tap print using saved printer settings"
+                        aria-label="Quick print kitchen ticket"
                       >
                         <Printer className="h-4 w-4" />
                         Print
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onPrintOrder(table, order)}
+                        className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-cyan-500/25 bg-[#060913] text-slate-400 transition-colors hover:border-cyan-400 hover:text-cyan-200 shrink-0"
+                        title="Edit Table # or printer options before printing"
+                        aria-label="Print options"
+                      >
+                        <SlidersHorizontal className="h-4 w-4" />
                       </button>
                       <button
                         type="button"

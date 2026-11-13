@@ -11,6 +11,8 @@ export interface DailyReportPayload {
   subtotal: number;
   tax: number;
   total: number;
+  cashTotal: number;
+  cardTotal: number;
 }
 
 export function buildDailyReportPayload(params: {
@@ -26,7 +28,23 @@ export function buildDailyReportPayload(params: {
     { year: 'numeric', month: 'short', day: 'numeric' }
   );
 
+  const computeSplitTotals = (sessions: CompletedSession[]) => {
+    const cash = sessions.reduce(
+      (s, x) => s + (x.cashPaid ?? (x.paymentMethod === 'cash' ? x.total : 0)),
+      0
+    );
+    const card = sessions.reduce(
+      (s, x) =>
+        s +
+        (x.cardPaid ??
+          (x.paymentMethod === 'cash' ? 0 : x.total - (x.cashPaid ?? 0))),
+      0
+    );
+    return { cash, card };
+  };
+
   if (params.fromBatch) {
+    const split = computeSplitTotals(params.fromBatch.sessions);
     return {
       title: `SIN-OS Daily Batch Report — ${dateStr}`,
       generatedAt: params.fromBatch.closedAt,
@@ -37,6 +55,8 @@ export function buildDailyReportPayload(params: {
       subtotal: params.fromBatch.subtotal,
       tax: params.fromBatch.tax,
       total: params.fromBatch.total,
+      cashTotal: params.fromBatch.cashTotal ?? split.cash,
+      cardTotal: params.fromBatch.cardTotal ?? split.card,
     };
   }
 
@@ -51,7 +71,7 @@ export function buildDailyReportPayload(params: {
       const tax = 0;
       allSessions.push({
         id: `open-${table.id}`,
-        tableName: `${table.name} (Open)`,
+        tableName: `${table.tableNumber ? `#${table.tableNumber} · ` : ''}${table.name} (Open)`,
         floor: table.floor,
         zone: table.zone,
         partySize: table.partySize || 1,
@@ -64,6 +84,9 @@ export function buildDailyReportPayload(params: {
         subtotal: sub,
         tax,
         total: sub,
+        paymentMethod: 'card',
+        cashPaid: 0,
+        cardPaid: sub,
       });
     }
   }
@@ -71,6 +94,7 @@ export function buildDailyReportPayload(params: {
   const subtotal = allSessions.reduce((s, sess) => s + sess.subtotal, 0);
   const tax = 0;
   const total = allSessions.reduce((s, sess) => s + sess.total, 0);
+  const split = computeSplitTotals(allSessions);
 
   return {
     title: `SIN-OS Daily Total — ${dateStr}`,
@@ -82,6 +106,8 @@ export function buildDailyReportPayload(params: {
     subtotal,
     tax,
     total,
+    cashTotal: split.cash,
+    cardTotal: split.card,
   };
 }
 
@@ -101,6 +127,8 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
   if (report.openTablesIncluded > 0) {
     lines.push(`Open Tables Included: ${report.openTablesIncluded}`);
   }
+  lines.push(`CASH TOTAL: $${report.cashTotal.toFixed(2)}`);
+  lines.push(`CARD TOTAL: $${report.cardTotal.toFixed(2)}`);
   lines.push(`GRAND TOTAL: $${report.total.toFixed(2)}`);
   lines.push('');
   lines.push('REVENUE BY FLOOR');
@@ -125,6 +153,7 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
   let xtraVipOneTimeCount = 0;
   let xtraDownstairsCount = 0;
   let upgradeVipCount = 0;
+  let upgradeAllDayVipCount = 0;
   let refillCount = 0;
   let iceHoseCount = 0;
   const flavorCounts: Record<string, number> = {};
@@ -152,6 +181,9 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
       if (order.menuItemId === 'r-upgrade-vip') {
         upgradeVipCount += order.quantity;
       }
+      if (order.menuItemId === 'r-upgrade-vip-allday') {
+        upgradeAllDayVipCount += order.quantity;
+      }
       if (order.menuItemId === 'r1') refillCount += order.quantity;
       if (order.iceHose || order.menuItemId === 'r-ice') {
         iceHoseCount += order.quantity;
@@ -173,6 +205,7 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
   lines.push(`- Xtra Person · One Time VIP ($20): ${xtraVipOneTimeCount}`);
   lines.push(`- Xtra Person · Downstairs ($10): ${xtraDownstairsCount}`);
   lines.push(`- Upgrade to VIP ($200): ${upgradeVipCount}`);
+  lines.push(`- All Day VIP Upgrade ($150): ${upgradeAllDayVipCount}`);
   lines.push(`- Hookah Refills: ${refillCount}`);
   lines.push(`- Ice Hose Add-ons: ${iceHoseCount}`);
 
@@ -205,10 +238,18 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
               )
               .join(', ')
           : 'No items';
+      const payTag =
+        sess.paymentMethod === 'cash'
+          ? 'CASH'
+          : sess.paymentMethod === 'split'
+          ? `SPLIT ($${(sess.cashPaid ?? 0).toFixed(2)} Cash / $${(
+              sess.cardPaid ?? 0
+            ).toFixed(2)} Card)`
+          : 'CARD';
       lines.push(
         `• ${sess.floor} · ${sess.tableName}${
           sess.guestName ? ` (${sess.guestName})` : ''
-        } — $${sess.total.toFixed(2)} | Party ${sess.partySize} | ${
+        } — $${sess.total.toFixed(2)} [${payTag}] | Party ${sess.partySize} | ${
           sess.durationMinutes
         }m | Server: ${sess.serverName || 'Staff'}`
       );

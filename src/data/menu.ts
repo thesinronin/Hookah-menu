@@ -8,6 +8,7 @@ import type {
 } from '../types.ts';
 
 export const VIP_UPGRADE_PRICE = 200;
+export const VIP_ONETIME_ALLDAY_UPGRADE_PRICE = 150;
 export const DEFAULT_SETTINGS: LoungeSettings = {
   coalAlertMinutes: 25,
   longStayAlertMinutes: 120,
@@ -16,6 +17,7 @@ export const DEFAULT_SETTINGS: LoungeSettings = {
   kitchenPrinterPort: 9100,
   kitchenPrinterWidth: '80mm',
   autoPrintKitchenTicket: false,
+  managerPin: '',
 };
 export const COAL_REPEAT_MINUTES = 10;
 
@@ -136,12 +138,44 @@ export const SEATING_TIER_LIST: SeatingTierConfig[] = [
   SEATING_TIERS.downstairs,
 ];
 
+export interface VipUpgradeOption {
+  menuItemId: 'r-upgrade-vip' | 'r-upgrade-vip-allday';
+  label: string;
+  shortLabel: string;
+  price: number;
+  description: string;
+}
+
+export function getVipUpgradeOption(
+  tierId?: SeatingTierId
+): VipUpgradeOption | null {
+  if (tierId === 'vip_onetime') {
+    return {
+      menuItemId: 'r-upgrade-vip-allday',
+      label: 'All Day VIP Upgrade',
+      shortLabel: 'All Day VIP',
+      price: VIP_ONETIME_ALLDAY_UPGRADE_PRICE,
+      description: 'Upgrade One Time VIP to All Day VIP ($150)',
+    };
+  }
+  if (tierId === 'downstairs' || tierId === 'bar_onetime') {
+    return {
+      menuItemId: 'r-upgrade-vip',
+      label: 'Upgrade to VIP',
+      shortLabel: 'Upgrade VIP',
+      price: VIP_UPGRADE_PRICE,
+      description: 'Upgrade to All Day VIP ($200)',
+    };
+  }
+  return null;
+}
+
 export function getTableSeatingTier(table: LoungeTable): SeatingTierConfig {
   if (table.seatingTier && SEATING_TIERS[table.seatingTier]) {
     return SEATING_TIERS[table.seatingTier];
   }
   const orderIds = new Set(table.orders.map((o) => o.menuItemId));
-  if (orderIds.has('r-upgrade-vip')) {
+  if (orderIds.has('r-upgrade-vip') || orderIds.has('r-upgrade-vip-allday')) {
     return SEATING_TIERS.vip_allday;
   }
   if (orderIds.has('h-vip-allday') || orderIds.has('h-allday')) {
@@ -177,7 +211,8 @@ export const MENU_ITEMS: MenuItem[] = [
   { id: 'r-xtra-vip-allday', name: 'Xtra Person · All Day VIP', category: 'refill', price: 65, description: 'Over 4 ppl · All Day VIP' },
   { id: 'r-xtra-vip-onetime', name: 'Xtra Person · One Time VIP', category: 'refill', price: 20, description: 'Over 4 ppl · One Time VIP' },
   { id: 'r-xtra-downstairs', name: 'Xtra Person · Downstairs', category: 'refill', price: 10, description: 'Over 4 ppl · Downstairs' },
-  { id: 'r-upgrade-vip', name: 'Upgrade to VIP', category: 'refill', price: 200, description: 'Upgrade One Time to VIP' },
+  { id: 'r-upgrade-vip', name: 'Upgrade to VIP', category: 'refill', price: 200, description: 'Downstairs / Bar to VIP' },
+  { id: 'r-upgrade-vip-allday', name: 'All Day VIP Upgrade', category: 'refill', price: 150, description: 'One Time VIP to All Day' },
   { id: 'r2', name: 'Extra Coconut Coals (3pc)', category: 'refill', price: 0, description: 'Complimentary rotation' },
 ];
 

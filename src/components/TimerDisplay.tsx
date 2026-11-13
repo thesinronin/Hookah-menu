@@ -44,6 +44,14 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
 
   const effectiveLimit = timeLimitMinutes ?? longStayAlertMinutes;
   const isOverLimit = elapsedMins >= effectiveLimit;
+  const remainingMins = timeLimitMinutes
+    ? Math.max(0, Math.ceil(timeLimitMinutes - elapsedMins))
+    : null;
+  const isExpiringSoon =
+    timeLimitMinutes !== undefined &&
+    !isOverLimit &&
+    remainingMins !== null &&
+    remainingMins <= 15;
   const isCoalDue =
     lastCoalCheckAt !== undefined && coalElapsedMins >= coalAlertMinutes;
 
@@ -51,7 +59,11 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
       <span
         className={`inline-flex items-center gap-1.5 font-mono font-semibold tabular-nums ${
-          isOverLimit ? 'text-fuchsia-400' : 'text-emerald-400'
+          isOverLimit
+            ? 'text-fuchsia-400'
+            : isExpiringSoon
+            ? 'text-amber-300'
+            : 'text-emerald-400'
         }`}
       >
         <Clock className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
@@ -60,6 +72,8 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
           <span className="font-sans font-medium">
             {isOverLimit
               ? `· ${Math.round(timeLimitMinutes / 60)}h limit up`
+              : isExpiringSoon
+              ? `· ${remainingMins}m left`
               : `· ${Math.round(timeLimitMinutes / 60)}h limit`}
           </span>
         ) : (

@@ -3,7 +3,8 @@ import {
   createInitialFlavors,
   createInitialTables,
   DEFAULT_SETTINGS,
-  VIP_UPGRADE_PRICE,
+  getTableSeatingTier,
+  getVipUpgradeOption,
 } from '../data/menu';
 import type {
   ActiveStaffMember,
@@ -14,6 +15,7 @@ import type {
   LoungeStateSnapshot,
   LoungeTable,
   OrderItem,
+  PaymentMethod,
   PrepStatus,
   SeatingTierId,
   StaffProfile,
@@ -40,6 +42,8 @@ export function useLoungeSync(staff: StaffProfile) {
   const pendingQueueRef = useRef<OutgoingAction[]>([]);
   const staffRef = useRef(staff);
   staffRef.current = staff;
+  const tablesRef = useRef(tables);
+  tablesRef.current = tables;
 
   const sendAction = useCallback((action: OutgoingAction) => {
     const ws = wsRef.current;
@@ -365,18 +369,39 @@ export function useLoungeSync(staff: StaffProfile) {
   );
 
   const checkoutTable = useCallback(
-    (tableId: string) => {
+    (
+      tableId: string,
+      payment?: {
+        paymentMethod?: PaymentMethod;
+        cashPaid?: number;
+        cardPaid?: number;
+        splitWays?: number;
+      }
+    ) => {
       const now = Date.now();
       const target = tables.find((t) => t.id === tableId);
+      const paymentMethod: PaymentMethod = payment?.paymentMethod ?? 'card';
       if (target && target.seatedAt) {
         const subtotal = target.orders.reduce(
           (s, o) => s + o.unitPrice * o.quantity,
           0
         );
         const tax = 0;
+        const cashPaid =
+          paymentMethod === 'cash'
+            ? subtotal
+            : paymentMethod === 'split'
+            ? Math.max(0, Math.min(subtotal, Number(payment?.cashPaid) || 0))
+            : 0;
+        const cardPaid =
+          paymentMethod === 'card'
+            ? subtotal
+            : Math.max(0, Number((subtotal - cashPaid).toFixed(2)));
         const localSess: CompletedSession = {
           id: `sess-${now}-${target.id}`,
-          tableName: target.name,
+          tableName: target.tableNumber
+            ? `#${target.tableNumber} · ${target.name}`
+            : target.name,
           floor: target.floor,
           zone: target.zone,
           partySize: target.partySize || 1,
@@ -392,6 +417,10 @@ export function useLoungeSync(staff: StaffProfile) {
           subtotal,
           tax,
           total: subtotal,
+          paymentMethod,
+          cashPaid,
+          cardPaid,
+          splitWays: payment?.splitWays,
         };
         setHistory((prev) => [localSess, ...prev]);
       }
@@ -419,22 +448,137 @@ export function useLoungeSync(staff: StaffProfile) {
         type: 'table:checkout',
         tableId,
         staffName: staffRef.current.name,
+        paymentMethod,
+        cashPaid: payment?.cashPaid,
+        splitWays: payment?.splitWays,
       });
     },
     [sendAction, tables]
   );
 
+  const transferTable = useCallback(
+    (fromTableId: string, toTableId: string, upgradeToVip = false) => {
+      const now = Date.now();
+      setTables((prev) => {
+        const fromTable = prev.find((t) => t.id === fromTableId);
+        const toTable = prev.find((t) => t.id === toTableId);
+        if (
+          !fromTable ||
+          !toTable ||
+          fromTable.id === toTable.id ||
+          fromTable.status !== 'occupied' ||
+          toTable.status !== 'available'
+        ) {
+          return prev;
+        }
+        const movedOrders = [...fromTable.orders];
+        const currentTier = getTableSeatingTier(fromTable);
+        const upgradeOpt = getVipUpgradeOption(currentTier.id);
+        let nextTier = fromTable.seatingTier;
+        let nextLimit = fromTable.timeLimitMinutes;
+        if (upgradeToVip && upgradeOpt) {
+          movedOrders.push({
+            id: `ord-${now}-${Math.random().toString(36).slice(2, 7)}-vip`,
+            menuItemId: upgradeOpt.menuItemId,
+            name: upgradeOpt.label,
+            category: 'refill',
+            unitPrice: upgradeOpt.price,
+            quantity: 1,
+            notes: `Transferred & upgraded from ${fromTable.name}`,
+            addedBy: staffRef.current.name,
+            prepStatus: 'served',
+            orderedAt: now,
+          });
+          nextTier = 'vip_allday';
+          nextLimit = undefined;
+        }
+
+        return prev.map((t) => {
+          if (t.id === fromTableId) {
+            return {
+              ...t,
+              status: 'available',
+              seatingTier: undefined,
+              timeLimitMinutes: undefined,
+              partySize: undefined,
+              guestName: undefined,
+              serverName: undefined,
+              seatedAt: undefined,
+              lastCoalCheckAt: undefined,
+              orders: [],
+              updatedAt: now,
+            };
+          }
+          if (t.id === toTableId) {
+            return {
+              ...t,
+              status: 'occupied',
+              seatingTier: nextTier,
+              timeLimitMinutes: nextLimit,
+              partySize: fromTable.partySize,
+              guestName: fromTable.guestName,
+              serverName: fromTable.serverName || staffRef.current.name,
+              seatedAt: fromTable.seatedAt || now,
+              lastCoalCheckAt: fromTable.lastCoalCheckAt || now,
+              orders: movedOrders,
+              updatedAt: now,
+            };
+          }
+          return t;
+        });
+      });
+
+      sendAction({
+        type: 'table:transfer',
+        fromTableId,
+        toTableId,
+        upgradeToVip,
+        staffName: staffRef.current.name,
+      });
+    },
+    [sendAction]
+  );
+
+  const markOrdersPrinted = useCallback(
+    (tableId: string, orderIds: string[]) => {
+      const now = Date.now();
+      const idSet = new Set(orderIds);
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId
+            ? {
+                ...t,
+                orders: t.orders.map((o) =>
+                  idSet.size === 0 || idSet.has(o.id)
+                    ? { ...o, kitchenPrintedAt: now }
+                    : o
+                ),
+                updatedAt: now,
+              }
+            : t
+        )
+      );
+      sendAction({ type: 'table:markPrinted', tableId, orderIds });
+    },
+    [sendAction]
+  );
+
   const upgradeToVip = useCallback(
     (tableId: string) => {
+      const targetTable = tablesRef.current.find((t) => t.id === tableId);
+      const currentTier = targetTable ? getTableSeatingTier(targetTable) : null;
+      const upgradeOpt = currentTier ? getVipUpgradeOption(currentTier.id) : null;
+      if (!upgradeOpt) return;
+
       const now = Date.now();
       const item: OrderItem = {
         id: `ord-${now}-${Math.random().toString(36).slice(2, 7)}-vip`,
-        menuItemId: 'r-upgrade-vip',
-        name: 'Upgrade to VIP',
+        menuItemId: upgradeOpt.menuItemId,
+        name: upgradeOpt.label,
         category: 'refill',
-        unitPrice: VIP_UPGRADE_PRICE,
+        unitPrice: upgradeOpt.price,
         quantity: 1,
-        notes: 'Upgraded One Time to VIP',
+        notes: `Upgraded ${currentTier?.shortLabel || 'table'} to All Day VIP`,
         addedBy: staffRef.current.name,
         prepStatus: 'served',
         orderedAt: now,
@@ -615,6 +759,9 @@ export function useLoungeSync(staff: StaffProfile) {
           subtotal: sub,
           tax,
           total: sub,
+          paymentMethod: 'card',
+          cashPaid: 0,
+          cardPaid: sub,
         };
       });
 
@@ -622,6 +769,17 @@ export function useLoungeSync(staff: StaffProfile) {
     const subtotal = allDaySessions.reduce((s, x) => s + x.subtotal, 0);
     const tax = allDaySessions.reduce((s, x) => s + x.tax, 0);
     const total = allDaySessions.reduce((s, x) => s + x.total, 0);
+    const cashTotal = allDaySessions.reduce(
+      (s, x) => s + (x.cashPaid ?? (x.paymentMethod === 'cash' ? x.total : 0)),
+      0
+    );
+    const cardTotal = allDaySessions.reduce(
+      (s, x) =>
+        s +
+        (x.cardPaid ??
+          (x.paymentMethod === 'cash' ? 0 : x.total - (x.cashPaid ?? 0))),
+      0
+    );
 
     const optimisticReport: BatchReport = {
       id: `batch-${now}`,
@@ -632,6 +790,8 @@ export function useLoungeSync(staff: StaffProfile) {
       subtotal,
       tax,
       total,
+      cashTotal,
+      cardTotal,
       sessions: allDaySessions,
     };
 
@@ -709,6 +869,8 @@ export function useLoungeSync(staff: StaffProfile) {
     refreshCoals,
     advancePrep,
     checkoutTable,
+    transferTable,
+    markOrdersPrinted,
     upgradeToVip,
     updateOrderFlavors,
     addFlavor,

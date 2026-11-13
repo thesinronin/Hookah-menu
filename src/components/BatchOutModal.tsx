@@ -242,6 +242,18 @@ export const BatchOutModal: React.FC<BatchOutModalProps> = ({
                       {preview.closedSessions.length}
                     </span>
                   </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>Cash Total</span>
+                    <span className="font-mono text-emerald-300 tabular-nums">
+                      ${preview.cashTotal.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>Card Total</span>
+                    <span className="font-mono text-cyan-200 tabular-nums">
+                      ${preview.cardTotal.toFixed(2)}
+                    </span>
+                  </div>
                   <div className="flex justify-between pt-1 text-base font-bold text-slate-100">
                     <span>Batch Out Grand Total</span>
                     <span className="font-mono text-cyan-300 tabular-nums">

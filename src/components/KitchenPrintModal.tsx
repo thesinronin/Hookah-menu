@@ -28,6 +28,7 @@ interface KitchenPrintModalProps {
   onUpdateSettings: (next: LoungeSettings) => void;
   onSaveTableNumber?: (tableId: string, tableNumber: string) => void;
   onSystemPrint: (ticket: KitchenTicketPayload, width: PrinterPaperWidth) => void;
+  onPrinted?: (ticket: KitchenTicketPayload) => void;
 }
 
 export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
@@ -38,6 +39,7 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
   onUpdateSettings,
   onSaveTableNumber,
   onSystemPrint,
+  onPrinted,
 }) => {
   const [tableNumber, setTableNumber] = useState('');
   const [items, setItems] = useState<KitchenTicketItem[]>([]);
@@ -98,6 +100,7 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
 
     if (mode === 'system') {
       onSystemPrint(finalTicket, paperWidth);
+      onPrinted?.(finalTicket);
       setStatusMsg('Sent ticket to device thermal print dialog.');
       return;
     }
@@ -116,6 +119,7 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
           setErrorMsg(res.error || 'Network thermal print failed.');
           return;
         }
+        onPrinted?.(finalTicket);
         setStatusMsg(`Printed kitchen ticket to ${ip}:${port}`);
         return;
       }
@@ -126,6 +130,7 @@ export const KitchenPrintModal: React.FC<KitchenPrintModalProps> = ({
           setErrorMsg(res.error || 'Bluetooth thermal print failed.');
           return;
         }
+        onPrinted?.(finalTicket);
         setStatusMsg(`Printed via Bluetooth (${res.deviceName || 'Printer'}).`);
       }
     } finally {
