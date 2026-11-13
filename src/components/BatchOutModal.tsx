@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileText, X } from 'lucide-react';
 import type { CompletedSession, LoungeTable } from '../types';
-import { TAX_RATE } from '../data/menu';
 import {
   getGoogleAccessToken,
   initGoogleAuth,
@@ -214,9 +213,10 @@ export const BatchOutModal: React.FC<BatchOutModalProps> = ({
                 ) : (
                   <div className="max-h-36 overflow-y-auto divide-y divide-cyan-500/10">
                     {openTables.map((t) => {
-                      const tTotal =
-                        t.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0) *
-                        (1 + TAX_RATE);
+                      const tTotal = t.orders.reduce(
+                        (s, o) => s + o.unitPrice * o.quantity,
+                        0
+                      );
                       return (
                         <div
                           key={t.id}
@@ -240,18 +240,6 @@ export const BatchOutModal: React.FC<BatchOutModalProps> = ({
                     <span>Total Tabs in Batch</span>
                     <span className="font-mono text-slate-200 tabular-nums">
                       {preview.closedSessions.length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Batch Subtotal</span>
-                    <span className="font-mono text-slate-200 tabular-nums">
-                      ${preview.subtotal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Tax (8%)</span>
-                    <span className="font-mono text-slate-200 tabular-nums">
-                      ${preview.tax.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between pt-1 text-base font-bold text-slate-100">

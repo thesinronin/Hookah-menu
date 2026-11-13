@@ -1,4 +1,5 @@
 import type {
+  FlavorOption,
   LoungeSettings,
   LoungeTable,
   MenuItem,
@@ -6,10 +7,15 @@ import type {
   TableFloor,
 } from '../types.ts';
 
-export const TAX_RATE = 0.08;
+export const VIP_UPGRADE_PRICE = 200;
 export const DEFAULT_SETTINGS: LoungeSettings = {
   coalAlertMinutes: 25,
   longStayAlertMinutes: 120,
+  kitchenPrinterMode: 'system',
+  kitchenPrinterIp: '',
+  kitchenPrinterPort: 9100,
+  kitchenPrinterWidth: '80mm',
+  autoPrintKitchenTicket: false,
 };
 export const COAL_REPEAT_MINUTES = 10;
 
@@ -29,6 +35,14 @@ export const SHISHA_FLAVORS: string[] = [
   'Mango',
   'Gummy Bear',
 ];
+
+export function createInitialFlavors(): FlavorOption[] {
+  return SHISHA_FLAVORS.map((name, idx) => ({
+    id: `flv-${idx + 1}`,
+    name,
+    available: true,
+  }));
+}
 
 export const BOWL_UPGRADES = [
   { label: 'Classic Clay', extraPrice: 0 },
@@ -134,6 +148,9 @@ export function getTableSeatingTier(table: LoungeTable): SeatingTierConfig {
     return SEATING_TIERS[table.seatingTier];
   }
   const orderIds = new Set(table.orders.map((o) => o.menuItemId));
+  if (orderIds.has('r-upgrade-vip')) {
+    return SEATING_TIERS.vip_allday;
+  }
   if (orderIds.has('h-vip-allday') || orderIds.has('h-allday')) {
     return SEATING_TIERS.vip_allday;
   }
@@ -167,6 +184,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { id: 'r-xtra-vip-allday', name: 'Xtra Person · All Day VIP', category: 'refill', price: 65, description: 'Over 4 ppl · All Day VIP' },
   { id: 'r-xtra-vip-onetime', name: 'Xtra Person · One Time VIP', category: 'refill', price: 20, description: 'Over 4 ppl · One Time VIP' },
   { id: 'r-xtra-downstairs', name: 'Xtra Person · Downstairs', category: 'refill', price: 10, description: 'Over 4 ppl · Downstairs' },
+  { id: 'r-upgrade-vip', name: 'Upgrade to VIP', category: 'refill', price: 200, description: 'Upgrade One Time to VIP' },
   { id: 'r2', name: 'Extra Coconut Coals (3pc)', category: 'refill', price: 0, description: 'Complimentary rotation' },
 ];
 

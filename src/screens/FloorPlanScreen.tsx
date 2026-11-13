@@ -7,7 +7,7 @@ import {
   Plus,
   Users,
 } from 'lucide-react';
-import { FLOORS, TAX_RATE } from '../data/menu';
+import { FLOORS } from '../data/menu';
 import type { LoungeSettings, LoungeTable, TableFloor } from '../types';
 import { TimerDisplay } from '../components/TimerDisplay';
 import { FloorMapCanvas } from '../components/FloorMapCanvas';
@@ -42,8 +42,7 @@ export const FloorPlanScreen: React.FC<FloorPlanScreenProps> = ({
     .filter((t) => t.status === 'occupied')
     .reduce(
       (sum, t) =>
-        sum +
-        t.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0) * (1 + TAX_RATE),
+        sum + t.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0),
       0
     );
 
@@ -219,11 +218,10 @@ export const FloorPlanScreen: React.FC<FloorPlanScreenProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {displayedTables.map((table) => {
             const isOccupied = table.status === 'occupied';
-            const subtotal = table.orders.reduce(
+            const total = table.orders.reduce(
               (s, o) => s + o.unitPrice * o.quantity,
               0
             );
-            const total = subtotal * (1 + TAX_RATE);
             const hookahCount = table.orders
               .filter((o) => o.category === 'hookah' || o.category === 'refill')
               .reduce((s, o) => s + o.quantity, 0);
@@ -253,7 +251,7 @@ export const FloorPlanScreen: React.FC<FloorPlanScreenProps> = ({
                 <div>
                   <div className="flex items-baseline justify-between gap-2">
                     <h3 className="text-lg font-bold text-slate-100 truncate font-display tracking-wide">
-                      {table.name}
+                      {table.tableNumber ? `#${table.tableNumber} · ${table.name}` : table.name}
                     </h3>
                     <span className="text-xs text-cyan-300/70 whitespace-nowrap shrink-0">
                       {table.floor} · {table.zone}

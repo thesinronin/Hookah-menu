@@ -1,6 +1,6 @@
 import React from 'react';
 import { FileText, Power } from 'lucide-react';
-import { FLOORS, TAX_RATE } from '../data/menu';
+import { FLOORS } from '../data/menu';
 import type { BatchReport, CompletedSession, LoungeTable } from '../types';
 
 interface AnalyticsScreenProps {
@@ -24,8 +24,7 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
     .filter((t) => t.status === 'occupied')
     .reduce(
       (sum, t) =>
-        sum +
-        t.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0) * (1 + TAX_RATE),
+        sum + t.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0),
       0
     );
 

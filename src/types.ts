@@ -12,6 +12,8 @@ export type SeatingTierId =
   | 'bar_allday'
   | 'bar_onetime'
   | 'downstairs';
+export type PrinterMode = 'system' | 'network' | 'bluetooth';
+export type PrinterPaperWidth = '80mm' | '58mm';
 
 export interface MenuItem {
   id: string;
@@ -19,6 +21,12 @@ export interface MenuItem {
   category: MenuCategory;
   price: number;
   description?: string;
+}
+
+export interface FlavorOption {
+  id: string;
+  name: string;
+  available: boolean;
 }
 
 export interface OrderItem {
@@ -40,6 +48,7 @@ export interface OrderItem {
 export interface LoungeTable {
   id: string;
   name: string;
+  tableNumber?: string;
   floor: TableFloor;
   zone: TableZone;
   seats: number;
@@ -93,6 +102,32 @@ export interface ActiveStaffMember {
 export interface LoungeSettings {
   coalAlertMinutes: number;
   longStayAlertMinutes: number;
+  kitchenPrinterMode?: PrinterMode;
+  kitchenPrinterIp?: string;
+  kitchenPrinterPort?: number;
+  kitchenPrinterWidth?: PrinterPaperWidth;
+  autoPrintKitchenTicket?: boolean;
+}
+
+export interface KitchenTicketItem {
+  name: string;
+  quantity: number;
+  bowlSelection: string;
+  flavors?: string[];
+  iceHose?: boolean;
+  notes?: string;
+}
+
+export interface KitchenTicketPayload {
+  tableId?: string;
+  tableNumber: string;
+  tableName: string;
+  floor: TableFloor;
+  zone: TableZone;
+  serverName?: string;
+  guestName?: string;
+  printedAt: number;
+  items: KitchenTicketItem[];
 }
 
 export interface BatchReport {
@@ -113,4 +148,5 @@ export interface LoungeStateSnapshot {
   settings: LoungeSettings;
   activeStaff: ActiveStaffMember[];
   lastBatchReport?: BatchReport | null;
+  flavors?: FlavorOption[];
 }

@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Check,
+  Crown,
   Flame,
   Minus,
+  Pencil,
   Play,
   Plus,
+  Printer,
   Receipt,
   Snowflake,
+  Sparkles,
   X,
 } from 'lucide-react';
 import {
@@ -14,11 +18,11 @@ import {
   MENU_ITEMS,
   SEATING_TIERS,
   SEATING_TIER_LIST,
-  SHISHA_FLAVORS,
-  TAX_RATE,
+  VIP_UPGRADE_PRICE,
   getTableSeatingTier,
 } from '../data/menu';
 import type {
+  FlavorOption,
   LoungeSettings,
   LoungeTable,
   MenuCategory,
@@ -31,6 +35,7 @@ import { TimerDisplay } from './TimerDisplay';
 interface TableDetailSheetProps {
   table: LoungeTable | null;
   settings: LoungeSettings;
+  flavors: FlavorOption[];
   onClose: () => void;
   onSeatTable: (
     tableId: string,
@@ -38,38 +43,61 @@ interface TableDetailSheetProps {
     guestName: string,
     initialOrders?: OrderItem[],
     seatingTier?: SeatingTierId,
-    timeLimitMinutes?: number
+    timeLimitMinutes?: number,
+    tableNumber?: string
   ) => void;
   onAddOrder: (tableId: string, item: OrderItem) => void;
   onUpdateQty: (tableId: string, orderId: string, delta: number) => void;
+  onUpdateOrderFlavors: (tableId: string, orderId: string, flavors: string[]) => void;
+  onUpdateTableNumber: (tableId: string, tableNumber: string) => void;
+  onPrintKitchenTicket: (table: LoungeTable, orders?: OrderItem[]) => void;
   onRefreshCoals: (tableId: string) => void;
   onCheckoutTable: (tableId: string) => void;
+  onUpgradeToVip: (tableId: string) => void;
+  onOpenFlavorManager: () => void;
 }
 
 export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   table,
   settings,
+  flavors,
   onClose,
   onSeatTable,
   onAddOrder,
   onUpdateQty,
+  onUpdateOrderFlavors,
+  onUpdateTableNumber,
+  onPrintKitchenTicket,
   onRefreshCoals,
   onCheckoutTable,
+  onUpgradeToVip,
+  onOpenFlavorManager,
 }) => {
   const [guestName, setGuestName] = useState('');
+  const [seatTableNumber, setSeatTableNumber] = useState('');
+  const [seatBowl, setSeatBowl] = useState(BOWL_UPGRADES[0]);
+  const [isEditingTableNum, setIsEditingTableNum] = useState(false);
+  const [tableNumDraft, setTableNumDraft] = useState('');
   const [seatingTier, setSeatingTier] = useState<SeatingTierId>('downstairs');
   const [extraPeopleCount, setExtraPeopleCount] = useState(0);
   const [addExtraCount, setAddExtraCount] = useState(1);
   const [seatIceHose, setSeatIceHose] = useState(false);
+  const [seatUpgradeVip, setSeatUpgradeVip] = useState(false);
+  const [seatFlavors, setSeatFlavors] = useState<string[]>([]);
   const [activeCategory, setActiveCategory] = useState<MenuCategory>('hookah');
   const [confirmCheckout, setConfirmCheckout] = useState(false);
 
   // Hookah Mix Builder State
   const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
-  const [selectedFlavors, setSelectedFlavors] = useState<string[]>(['Mint']);
+  const [selectedFlavors, setSelectedFlavors] = useState<string[]>([]);
   const [selectedBowl, setSelectedBowl] = useState(BOWL_UPGRADES[0]);
   const [iceHose, setIceHose] = useState(false);
   const [hookahNotes, setHookahNotes] = useState('');
+
+  // Edit Existing Order Flavors State
+  const [editingOrderForFlavors, setEditingOrderForFlavors] =
+    useState<OrderItem | null>(null);
+  const [editingFlavorsDraft, setEditingFlavorsDraft] = useState<string[]>([]);
 
   useEffect(() => {
     const defaultTier: SeatingTierId =
@@ -81,33 +109,86 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
     setExtraPeopleCount(0);
     setAddExtraCount(1);
     setGuestName('');
+    setSeatTableNumber(table?.tableNumber || '');
+    setSeatBowl(BOWL_UPGRADES[0]);
+    setIsEditingTableNum(false);
+    setTableNumDraft(table?.tableNumber || '');
     setSeatingTier(defaultTier);
     setSeatIceHose(false);
+    setSeatUpgradeVip(false);
+    setSeatFlavors([]);
     setConfirmCheckout(false);
     setCustomizingItem(null);
+    setEditingOrderForFlavors(null);
+    setEditingFlavorsDraft([]);
   }, [table?.id, table?.zone]);
 
+  useEffect(() => {
+    setTableNumDraft(table?.tableNumber || '');
+    setSeatTableNumber(table?.tableNumber || '');
+  }, [table?.id, table?.tableNumber]);
+
   const totals = useMemo(() => {
-    if (!table) return { subtotal: 0, tax: 0, total: 0 };
-    const subtotal = table.orders.reduce(
+    if (!table) return { total: 0 };
+    const total = table.orders.reduce(
       (sum, o) => sum + o.unitPrice * o.quantity,
       0
     );
-    const tax = subtotal * TAX_RATE;
-    return { subtotal, tax, total: subtotal + tax };
+    return { total };
   }, [table]);
 
   if (!table) return null;
 
   const activeTier = getTableSeatingTier(table);
 
-  const toggleFlavor = (flavor: string) => {
-    setSelectedFlavors((prev) => {
+  const toggleFlavorInList = (
+    flavor: string,
+    setter: React.Dispatch<React.SetStateAction<string[]>>
+  ) => {
+    setter((prev) => {
       if (prev.includes(flavor)) return prev.filter((f) => f !== flavor);
       if (prev.length >= 3) return prev;
       return [...prev, flavor];
     });
   };
+
+  const renderFlavorPickerGrid = (
+    selected: string[],
+    setter: React.Dispatch<React.SetStateAction<string[]>>
+  ) => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {flavors.map((flv) => {
+        const active = selected.includes(flv.name);
+        const disabled = !flv.available && !active;
+        return (
+          <button
+            key={flv.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => toggleFlavorInList(flv.name, setter)}
+            className={`flex min-h-[44px] items-center justify-between gap-1.5 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-colors ${
+              active
+                ? 'border-fuchsia-400 bg-fuchsia-500/15 text-fuchsia-200'
+                : !flv.available
+                ? 'border-amber-500/20 bg-[#060913]/60 text-slate-500 cursor-not-allowed'
+                : 'border-cyan-500/20 bg-[#060913] text-slate-300 hover:border-cyan-400/50'
+            }`}
+          >
+            <span className={`truncate ${!flv.available ? 'line-through' : ''}`}>
+              {flv.name}
+            </span>
+            {active ? (
+              <Check className="h-3.5 w-3.5 shrink-0 text-fuchsia-400" />
+            ) : !flv.available ? (
+              <span className="shrink-0 text-[9px] font-mono uppercase text-amber-400/90">
+                Out
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   const getEffectiveMenuPrice = (item: MenuItem): number => {
     if (item.id === 'r1') return activeTier.refillPrice;
@@ -116,10 +197,16 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
   };
 
   const handleSelectMenuItem = (item: MenuItem) => {
+    if (item.id === 'r-upgrade-vip') {
+      onUpgradeToVip(table.id);
+      return;
+    }
+
     const effectivePrice = getEffectiveMenuPrice(item);
     if (item.category === 'hookah' || item.id === 'r1') {
+      const firstAvail = flavors.find((f) => f.available)?.name;
       setCustomizingItem({ ...item, price: effectivePrice });
-      setSelectedFlavors(['Mint']);
+      setSelectedFlavors(firstAvail ? [firstAvail] : []);
       setSelectedBowl(BOWL_UPGRADES[0]);
       setIceHose(false);
       setHookahNotes('');
@@ -176,7 +263,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
     onClose();
   };
 
-  const filteredMenu = MENU_ITEMS.filter((m) => m.category === activeCategory);
+  const filteredMenu = MENU_ITEMS.filter((m) => {
+    if (m.category !== activeCategory) return false;
+    if (m.id === 'r-upgrade-vip' && activeTier.id === 'vip_allday') return false;
+    return true;
+  });
 
   return (
     <div
@@ -192,9 +283,16 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
         {/* Sheet Header */}
         <div className="flex items-start justify-between gap-4 border-b border-cyan-500/20 px-5 py-4">
           <div className="min-w-0">
-            <h2 className="text-xl font-bold text-slate-100 truncate font-display tracking-wide">
-              {table.name}
-            </h2>
+            <div className="flex items-center gap-2 min-w-0">
+              {table.tableNumber && (
+                <span className="shrink-0 rounded-md border border-cyan-400/50 bg-cyan-500/15 px-2 py-0.5 font-mono text-xs font-bold text-cyan-300">
+                  #{table.tableNumber}
+                </span>
+              )}
+              <h2 className="text-xl font-bold text-slate-100 truncate font-display tracking-wide">
+                {table.name}
+              </h2>
+            </div>
             <p className="mt-0.5 text-xs text-cyan-200/70">
               {table.floor} · {table.zone} · {table.seats} seats
               {table.status === 'occupied' && table.serverName
@@ -239,17 +337,39 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-cyan-200/80 mb-1.5">
-                  Guest or Tab Name (optional)
-                </label>
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  placeholder="e.g. Alex / Birthday"
-                  className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label
+                    htmlFor="seat-table-number"
+                    className="block text-xs font-medium text-cyan-200/80 mb-1.5"
+                  >
+                    Table #
+                  </label>
+                  <input
+                    id="seat-table-number"
+                    type="text"
+                    value={seatTableNumber}
+                    onChange={(e) => setSeatTableNumber(e.target.value)}
+                    placeholder="e.g. 12"
+                    className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2.5 font-mono text-sm font-bold text-cyan-200 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="seat-guest-name"
+                    className="block text-xs font-medium text-cyan-200/80 mb-1.5"
+                  >
+                    Guest or Tab Name (optional)
+                  </label>
+                  <input
+                    id="seat-guest-name"
+                    type="text"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    placeholder="e.g. Alex / Birthday"
+                    className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>
@@ -270,6 +390,9 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           setSeatingTier(tier.id);
                           if (tier.perPersonService) {
                             setExtraPeopleCount(0);
+                          }
+                          if (tier.id !== 'vip_onetime' && tier.id !== 'bar_onetime') {
+                            setSeatUpgradeVip(false);
                           }
                         }}
                         className={`flex min-h-[72px] flex-col justify-between rounded-xl border p-3 text-left transition-colors ${
@@ -299,14 +422,20 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
 
               {(() => {
                 const chosen = SEATING_TIERS[seatingTier];
+                const isOneTimeTier =
+                  chosen.id === 'vip_onetime' || chosen.id === 'bar_onetime';
+                const upgradeVipApplied = isOneTimeTier && seatUpgradeVip;
                 const extraPeople = chosen.perPersonService ? 0 : extraPeopleCount;
                 const computedPartySize = chosen.perPersonService
                   ? 1
                   : chosen.includedPeople + extraPeople;
                 const baseTabPrice = chosen.basePrice;
                 const extraTotal = extraPeople * chosen.extraPersonPrice;
+                const bowlTotal = seatBowl.extraPrice;
                 const iceTotal = seatIceHose ? chosen.iceHosePrice : 0;
-                const openingTotal = baseTabPrice + extraTotal + iceTotal;
+                const upgradeTotal = upgradeVipApplied ? VIP_UPGRADE_PRICE : 0;
+                const openingTotal =
+                  baseTabPrice + extraTotal + bowlTotal + iceTotal + upgradeTotal;
 
                 return (
                   <>
@@ -370,20 +499,83 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                         </div>
                       )}
 
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span>Bowl ({seatBowl.label})</span>
+                        <span className="font-mono font-semibold text-cyan-200 tabular-nums">
+                          {bowlTotal > 0 ? `+$${bowlTotal.toFixed(2)}` : '$0.00'}
+                        </span>
+                      </div>
+
+                      {upgradeVipApplied && (
+                        <div className="flex items-center justify-between text-amber-300">
+                          <span>Upgrade to VIP</span>
+                          <span className="font-mono font-semibold tabular-nums">
+                            +${VIP_UPGRADE_PRICE.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-cyan-500/15">
                         <span>
                           Refill rate:{' '}
                           <strong className="text-cyan-200">
-                            {chosen.refillPrice === 0
+                            {upgradeVipApplied || chosen.refillPrice === 0
                               ? 'Included ($0)'
                               : `$${chosen.refillPrice}`}
                           </strong>
                         </span>
                         <span>
-                          {chosen.timeLimitMinutes
+                          {!upgradeVipApplied && chosen.timeLimitMinutes
                             ? `${Math.round(chosen.timeLimitMinutes / 60)} hr time limit`
                             : 'No 2h cutoff'}
                         </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-xs font-medium text-cyan-200/80">
+                          Opening Hookah Flavors ({seatFlavors.length}/3)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={onOpenFlavorManager}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-fuchsia-300 hover:text-fuchsia-200"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          Edit Flavors
+                        </button>
+                      </div>
+                      {renderFlavorPickerGrid(seatFlavors, setSeatFlavors)}
+                    </div>
+
+                    <div>
+                      <span className="block text-xs font-medium text-cyan-200/80 mb-2">
+                        Bowl Selection
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {BOWL_UPGRADES.map((bowl) => {
+                          const active = seatBowl.label === bowl.label;
+                          return (
+                            <button
+                              key={bowl.label}
+                              type="button"
+                              onClick={() => setSeatBowl(bowl)}
+                              className={`flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                                active
+                                  ? 'border-cyan-400 bg-cyan-400/15 text-cyan-200'
+                                  : 'border-cyan-500/20 bg-[#060913] text-slate-300 hover:border-cyan-400/50'
+                              }`}
+                            >
+                              <span>{bowl.label}</span>
+                              {bowl.extraPrice > 0 && (
+                                <span className="font-mono text-cyan-300">
+                                  +${bowl.extraPrice}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -405,6 +597,26 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                       </span>
                     </button>
 
+                    {isOneTimeTier && (
+                      <button
+                        type="button"
+                        onClick={() => setSeatUpgradeVip((v) => !v)}
+                        className={`flex min-h-[48px] w-full items-center justify-between rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
+                          seatUpgradeVip
+                            ? 'border-fuchsia-400 bg-fuchsia-500/15 text-fuchsia-200 cyber-glow-magenta'
+                            : 'border-cyan-500/25 bg-[#060913] text-slate-300 hover:border-fuchsia-400/50'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <Crown className="h-4 w-4 text-fuchsia-400" />
+                          Upgrade to VIP (+${VIP_UPGRADE_PRICE})
+                        </span>
+                        <span className="text-xs font-mono">
+                          {seatUpgradeVip ? 'ADDED' : 'OPTIONAL'}
+                        </span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => {
@@ -417,8 +629,12 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                             category: 'hookah',
                             unitPrice:
                               chosen.basePrice +
+                              seatBowl.extraPrice +
                               (seatIceHose ? chosen.iceHosePrice : 0),
                             quantity: 1,
+                            flavors:
+                              seatFlavors.length > 0 ? seatFlavors : undefined,
+                            bowlUpgrade: seatBowl.label,
                             iceHose: seatIceHose,
                             prepStatus: 'queued',
                             orderedAt: now,
@@ -445,15 +661,33 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           });
                         }
 
+                        if (upgradeVipApplied) {
+                          initialOrders.push({
+                            id: `ord-${now}-${Math.random().toString(36).slice(2, 7)}-vip`,
+                            menuItemId: 'r-upgrade-vip',
+                            name: 'Upgrade to VIP',
+                            category: 'refill',
+                            unitPrice: VIP_UPGRADE_PRICE,
+                            quantity: 1,
+                            notes: `Upgraded ${chosen.shortLabel} to VIP`,
+                            prepStatus: 'served',
+                            orderedAt: now,
+                          });
+                        }
+
                         onSeatTable(
                           table.id,
                           computedPartySize,
                           guestName.trim(),
                           initialOrders,
-                          chosen.id,
-                          chosen.timeLimitMinutes
+                          upgradeVipApplied ? 'vip_allday' : chosen.id,
+                          upgradeVipApplied ? undefined : chosen.timeLimitMinutes,
+                          seatTableNumber.trim() || undefined
                         );
                         setGuestName('');
+                        setSeatBowl(BOWL_UPGRADES[0]);
+                        setSeatUpgradeVip(false);
+                        setSeatFlavors([]);
                       }}
                       className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-sm font-bold text-slate-950 transition-colors hover:bg-cyan-300 cyber-glow-cyan"
                     >
@@ -464,10 +698,58 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                 );
               })()}
             </div>
+          ) : editingOrderForFlavors ? (
+            /* Edit Flavors on Existing Order */
+            <div className="space-y-5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-slate-100">
+                    Edit Flavors · {editingOrderForFlavors.name}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Select 1–3 flavors ({editingFlavorsDraft.length}/3 selected)
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={onOpenFlavorManager}
+                    className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-fuchsia-500/35 bg-fuchsia-500/10 px-2.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/20"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Catalog
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingOrderForFlavors(null)}
+                    className="min-h-[40px] px-3 text-xs font-semibold text-slate-400 hover:text-slate-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {renderFlavorPickerGrid(editingFlavorsDraft, setEditingFlavorsDraft)}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateOrderFlavors(
+                    table.id,
+                    editingOrderForFlavors.id,
+                    editingFlavorsDraft
+                  );
+                  setEditingOrderForFlavors(null);
+                }}
+                className="min-h-[48px] w-full rounded-xl bg-cyan-400 px-4 py-3 text-sm font-bold text-slate-950 transition-colors hover:bg-cyan-300 cyber-glow-cyan"
+              >
+                Save Flavors to Order
+              </button>
+            </div>
           ) : customizingItem ? (
             /* Hookah Mix Builder */
             <div className="space-y-5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold text-slate-100">
                     {customizingItem.name}
@@ -476,35 +758,26 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                     Select 1–3 flavors ({selectedFlavors.length}/3 selected)
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setCustomizingItem(null)}
-                  className="min-h-[44px] px-3 text-xs font-semibold text-slate-400 hover:text-slate-100"
-                >
-                  Cancel
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={onOpenFlavorManager}
+                    className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-fuchsia-500/35 bg-fuchsia-500/10 px-2.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/20"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Edit Flavors
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomizingItem(null)}
+                    className="min-h-[40px] px-3 text-xs font-semibold text-slate-400 hover:text-slate-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {SHISHA_FLAVORS.map((flavor) => {
-                  const active = selectedFlavors.includes(flavor);
-                  return (
-                    <button
-                      key={flavor}
-                      type="button"
-                      onClick={() => toggleFlavor(flavor)}
-                      className={`flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-colors ${
-                        active
-                          ? 'border-fuchsia-400 bg-fuchsia-500/15 text-fuchsia-200'
-                          : 'border-cyan-500/20 bg-[#060913] text-slate-300 hover:border-cyan-400/50'
-                      }`}
-                    >
-                      <span className="truncate">{flavor}</span>
-                      {active && <Check className="h-3.5 w-3.5 shrink-0 text-fuchsia-400" />}
-                    </button>
-                  );
-                })}
-              </div>
+              {renderFlavorPickerGrid(selectedFlavors, setSelectedFlavors)}
 
               {customizingItem.category === 'hookah' && (
                 <div>
@@ -587,30 +860,121 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
           ) : (
             /* Active Order & Ticket View */
             <div className="space-y-5">
-              {/* Party Info & Coal Reset */}
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-500/20 bg-[#060913] px-3.5 py-2.5">
-                <div className="min-w-0">
-                  <span className="text-xs font-medium text-slate-200">
-                    Party of {table.partySize}
-                    {table.guestName ? ` · ${table.guestName}` : ''}
-                  </span>
-                  <p className="text-[11px] text-cyan-300">
-                    {activeTier.label} · Refill{' '}
-                    {activeTier.refillPrice === 0
-                      ? 'Incl.'
-                      : `$${activeTier.refillPrice}`}{' '}
-                    · Ice ${activeTier.iceHosePrice}
-                  </p>
+              {/* Party Info, Table Number & Quick Actions */}
+              <div className="space-y-2.5 rounded-xl border border-cyan-500/20 bg-[#060913] px-3.5 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium text-slate-200">
+                      Party of {table.partySize}
+                      {table.guestName ? ` · ${table.guestName}` : ''}
+                    </span>
+                    <p className="text-[11px] text-cyan-300">
+                      {activeTier.label} · Refill{' '}
+                      {activeTier.refillPrice === 0
+                        ? 'Incl.'
+                        : `$${activeTier.refillPrice}`}{' '}
+                      · Ice ${activeTier.iceHosePrice}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onPrintKitchenTicket(table)}
+                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-cyan-400/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/25 whitespace-nowrap"
+                    >
+                      <Printer className="h-3.5 w-3.5 text-cyan-300" />
+                      Print Kitchen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRefreshCoals(table.id)}
+                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 whitespace-nowrap"
+                    >
+                      <Flame className="h-3.5 w-3.5 text-amber-400" />
+                      Coals
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onRefreshCoals(table.id)}
-                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 whitespace-nowrap shrink-0"
-                >
-                  <Flame className="h-3.5 w-3.5 text-amber-400" />
-                  Coals Refreshed
-                </button>
+
+                {/* Inline Table # Input / Editor */}
+                <div className="flex items-center justify-between gap-2 border-t border-cyan-500/15 pt-2">
+                  {isEditingTableNum ? (
+                    <div className="flex flex-1 items-center gap-2">
+                      <input
+                        type="text"
+                        value={tableNumDraft}
+                        onChange={(e) => setTableNumDraft(e.target.value)}
+                        placeholder="Enter Table # (e.g. 12)"
+                        aria-label="Edit table number"
+                        className="flex-1 min-h-[38px] rounded-lg border border-cyan-400/50 bg-[#0B101D] px-2.5 py-1 font-mono text-xs font-bold text-cyan-200 placeholder-slate-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onUpdateTableNumber(table.id, tableNumDraft.trim());
+                          setIsEditingTableNum(false);
+                        }}
+                        className="min-h-[38px] rounded-lg bg-cyan-400 px-3 text-xs font-bold text-slate-950 hover:bg-cyan-300"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTableNumDraft(table.tableNumber || '');
+                          setIsEditingTableNum(false);
+                        }}
+                        className="min-h-[38px] px-2 text-xs text-slate-400 hover:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-xs text-slate-300">
+                        Kitchen Table #:{' '}
+                        <strong className="font-mono text-cyan-300">
+                          {table.tableNumber ? `#${table.tableNumber}` : 'Not set'}
+                        </strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTableNumDraft(table.tableNumber || '');
+                          setIsEditingTableNum(true);
+                        }}
+                        className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-cyan-500/25 bg-[#0B101D] px-2.5 text-[11px] font-semibold text-cyan-200 hover:border-cyan-400"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        {table.tableNumber ? 'Edit #' : 'Set Table #'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
+
+              {/* Upgrade One Time to VIP (+$200) */}
+              {(activeTier.id === 'vip_onetime' ||
+                activeTier.id === 'bar_onetime') && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3.5 py-3 cyber-glow-magenta">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-fuchsia-200">
+                      <Crown className="h-4 w-4 shrink-0 text-fuchsia-400" />
+                      <span>Upgrade to VIP</span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-slate-300">
+                      Lift time limit &amp; unlock VIP refills (+${VIP_UPGRADE_PRICE})
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onUpgradeToVip(table.id)}
+                    className="min-h-[44px] shrink-0 rounded-xl bg-fuchsia-500 px-4 text-xs font-bold text-white transition-colors hover:bg-fuchsia-400 whitespace-nowrap"
+                  >
+                    Upgrade +${VIP_UPGRADE_PRICE}
+                  </button>
+                </div>
+              )}
 
               {/* Quick Dropdown to Add Extra People to Active Tab */}
               {!activeTier.perPersonService && (
@@ -744,12 +1108,39 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
                           <p className="text-sm font-semibold text-slate-100 truncate">
                             {order.name}
                           </p>
-                          {order.flavors && (
+                          {(order.flavors || order.bowlUpgrade || order.iceHose) && (
                             <p className="mt-0.5 text-xs text-fuchsia-300">
-                              {order.flavors.join(' + ')}
-                              {order.bowlUpgrade ? ` · ${order.bowlUpgrade}` : ''}
-                              {order.iceHose ? ' · Ice Hose' : ''}
+                              {order.flavors ? order.flavors.join(' + ') : ''}
+                              {order.bowlUpgrade
+                                ? `${order.flavors ? ' · ' : ''}${order.bowlUpgrade}`
+                                : ''}
+                              {order.iceHose
+                                ? `${order.flavors || order.bowlUpgrade ? ' · ' : ''}Ice Hose`
+                                : ''}
                             </p>
+                          )}
+                          {(order.category === 'hookah' || order.menuItemId === 'r1') && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingOrderForFlavors(order);
+                                  setEditingFlavorsDraft(order.flavors ?? []);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-200 hover:bg-fuchsia-500/20"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                {order.flavors?.length ? 'Edit Flavors' : '+ Add Flavors'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onPrintKitchenTicket(table, [order])}
+                                className="inline-flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/20"
+                              >
+                                <Printer className="h-3 w-3" />
+                                Print
+                              </button>
+                            </div>
                           )}
                           {order.notes && (
                             <p className="mt-0.5 text-xs text-slate-400">
@@ -813,25 +1204,11 @@ export const TableDetailSheet: React.FC<TableDetailSheetProps> = ({
         {/* Sticky Checkout Footer for Occupied Table */}
         {table.status === 'occupied' && !customizingItem && (
           <div className="border-t border-cyan-500/20 bg-[#060913] px-5 py-4 pb-safe space-y-3">
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between text-slate-400">
-                <span>Subtotal</span>
-                <span className="font-mono tabular-nums">
-                  ${totals.subtotal.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Tax ({(TAX_RATE * 100).toFixed(0)}%)</span>
-                <span className="font-mono tabular-nums">
-                  ${totals.tax.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between pt-1 text-base font-bold text-slate-100">
-                <span>Total Due</span>
-                <span className="font-mono text-cyan-300 tabular-nums">
-                  ${totals.total.toFixed(2)}
-                </span>
-              </div>
+            <div className="flex justify-between text-base font-bold text-slate-100">
+              <span>Total Due</span>
+              <span className="font-mono text-cyan-300 tabular-nums">
+                ${totals.total.toFixed(2)}
+              </span>
             </div>
 
             <div className="flex gap-2">

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Flame } from 'lucide-react';
+import { CheckCircle2, Flame, Printer, Sparkles } from 'lucide-react';
 import { FLOORS } from '../data/menu';
 import type {
   LoungeSettings,
@@ -14,6 +14,8 @@ interface HookahStationScreenProps {
   settings: LoungeSettings;
   onAdvancePrep: (tableId: string, orderId: string, nextStatus: PrepStatus) => void;
   onRefreshCoals: (tableId: string) => void;
+  onOpenFlavorManager: () => void;
+  onPrintOrder: (table: LoungeTable, order: OrderItem) => void;
 }
 
 export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
@@ -21,6 +23,8 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
   settings,
   onAdvancePrep,
   onRefreshCoals,
+  onOpenFlavorManager,
+  onPrintOrder,
 }) => {
   const [floorFilter, setFloorFilter] = useState<'All' | TableFloor>('All');
   const [now, setNow] = useState(() => Date.now());
@@ -57,22 +61,33 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Floor Filter */}
-      <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-cyan-500/25 bg-[#0B101D] p-1 max-w-xl">
-        {(['All', ...FLOORS] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFloorFilter(f)}
-            className={`min-h-[40px] rounded-lg px-2 text-xs font-bold transition-colors whitespace-nowrap font-display tracking-wide ${
-              floorFilter === f
-                ? 'bg-cyan-400 text-slate-950 cyber-glow-cyan'
-                : 'text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-200'
-            }`}
-          >
-            {f}
-          </button>
-        ))}
+      {/* Floor Filter & Flavor Inventory */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-cyan-500/25 bg-[#0B101D] p-1 flex-1 min-w-[260px] max-w-xl">
+          {(['All', ...FLOORS] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFloorFilter(f)}
+              className={`min-h-[40px] rounded-lg px-2 text-xs font-bold transition-colors whitespace-nowrap font-display tracking-wide ${
+                floorFilter === f
+                  ? 'bg-cyan-400 text-slate-950 cyber-glow-cyan'
+                  : 'text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-200'
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpenFlavorManager}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-xs font-bold text-fuchsia-200 transition-colors hover:bg-fuchsia-500/20 cyber-glow-magenta whitespace-nowrap shrink-0"
+        >
+          <Sparkles className="h-4 w-4 text-fuchsia-400" />
+          Manage Flavors
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -173,7 +188,10 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
                       </div>
 
                       <h3 className="mt-1.5 text-base font-bold text-slate-100">
-                        {table.name} · {order.quantity}× {order.name}
+                        {table.tableNumber
+                          ? `Table #${table.tableNumber} (${table.name})`
+                          : table.name}{' '}
+                        · {order.quantity}× {order.name}
                       </h3>
 
                       {order.flavors && (
@@ -181,12 +199,10 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
                           Mix: {order.flavors.join(' + ')}
                         </p>
                       )}
-                      {(order.bowlUpgrade || order.iceHose) && (
-                        <p className="mt-1 text-xs text-slate-300">
-                          {order.bowlUpgrade || 'Standard bowl'}
-                          {order.iceHose ? ' · Ice Hose' : ''}
-                        </p>
-                      )}
+                      <p className="mt-1 text-xs text-cyan-200 font-semibold">
+                        Bowl: {order.bowlUpgrade || 'Classic Clay'}
+                        {order.iceHose ? ' · Ice Hose' : ''}
+                      </p>
                       {order.notes && (
                         <p className="mt-1.5 text-xs text-amber-300">
                           Note: {order.notes}
@@ -194,21 +210,32 @@ export const HookahStationScreen: React.FC<HookahStationScreenProps> = ({
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onAdvancePrep(table.id, order.id, nextStatus)
-                      }
-                      className={`mt-4 min-h-[44px] w-full rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors ${
-                        order.prepStatus === 'queued'
-                          ? 'bg-cyan-400 text-slate-950 hover:bg-cyan-300 cyber-glow-cyan'
-                          : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300 cyber-glow-emerald'
-                      }`}
-                    >
-                      {order.prepStatus === 'queued'
-                        ? 'Start Packing & Lighting Coals'
-                        : 'Mark Delivered to Table'}
-                    </button>
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onPrintOrder(table, order)}
+                        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-cyan-500/35 bg-[#060913] px-3 py-2.5 text-xs font-bold text-cyan-200 transition-colors hover:border-cyan-400 hover:bg-cyan-500/10 shrink-0"
+                        aria-label="Print kitchen ticket"
+                      >
+                        <Printer className="h-4 w-4" />
+                        Print
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onAdvancePrep(table.id, order.id, nextStatus)
+                        }
+                        className={`min-h-[44px] flex-1 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors ${
+                          order.prepStatus === 'queued'
+                            ? 'bg-cyan-400 text-slate-950 hover:bg-cyan-300 cyber-glow-cyan'
+                            : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300 cyber-glow-emerald'
+                        }`}
+                      >
+                        {order.prepStatus === 'queued'
+                          ? 'Start Packing & Lighting Coals'
+                          : 'Mark Delivered to Table'}
+                      </button>
+                    </div>
                   </div>
                 );
               })}

@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createInitialTables, DEFAULT_SETTINGS, TAX_RATE } from '../data/menu';
+import {
+  createInitialFlavors,
+  createInitialTables,
+  DEFAULT_SETTINGS,
+  VIP_UPGRADE_PRICE,
+} from '../data/menu';
 import type {
   ActiveStaffMember,
   BatchReport,
   CompletedSession,
+  FlavorOption,
   LoungeSettings,
   LoungeStateSnapshot,
   LoungeTable,
@@ -27,6 +33,7 @@ export function useLoungeSync(staff: StaffProfile) {
   const [settings, setSettings] = useState<LoungeSettings>(DEFAULT_SETTINGS);
   const [activeStaff, setActiveStaff] = useState<ActiveStaffMember[]>([]);
   const [lastBatchReport, setLastBatchReport] = useState<BatchReport | null>(null);
+  const [flavors, setFlavors] = useState<FlavorOption[]>(() => createInitialFlavors());
   const [connectionState, setConnectionState] = useState<'connecting' | 'live' | 'reconnecting'>('connecting');
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -58,6 +65,9 @@ export function useLoungeSync(staff: StaffProfile) {
           setSettings(snapshot.settings || DEFAULT_SETTINGS);
           setActiveStaff(snapshot.activeStaff || []);
           setLastBatchReport(snapshot.lastBatchReport ?? null);
+          if (Array.isArray(snapshot.flavors) && snapshot.flavors.length > 0) {
+            setFlavors(snapshot.flavors);
+          }
         }
       })
       .catch(() => {});
@@ -105,6 +115,7 @@ export function useLoungeSync(staff: StaffProfile) {
             session?: CompletedSession;
             settings?: LoungeSettings;
             activeStaff?: ActiveStaffMember[];
+            flavors?: FlavorOption[];
           };
 
           switch (msg.type) {
@@ -115,6 +126,9 @@ export function useLoungeSync(staff: StaffProfile) {
                 setSettings(msg.snapshot.settings);
                 setActiveStaff(msg.snapshot.activeStaff);
                 setLastBatchReport(msg.snapshot.lastBatchReport ?? null);
+                if (Array.isArray(msg.snapshot.flavors)) {
+                  setFlavors(msg.snapshot.flavors);
+                }
               }
               break;
             case 'table:updated':
@@ -150,6 +164,11 @@ export function useLoungeSync(staff: StaffProfile) {
             case 'staff:presence':
               if (msg.activeStaff) {
                 setActiveStaff(msg.activeStaff);
+              }
+              break;
+            case 'flavors:updated':
+              if (Array.isArray(msg.flavors)) {
+                setFlavors(msg.flavors);
               }
               break;
           }
@@ -202,9 +221,11 @@ export function useLoungeSync(staff: StaffProfile) {
       guestName: string,
       initialOrders: OrderItem[] = [],
       seatingTier?: SeatingTierId,
-      timeLimitMinutes?: number
+      timeLimitMinutes?: number,
+      tableNumber?: string
     ) => {
       const now = Date.now();
+      const cleanTableNum = tableNumber?.trim() || undefined;
       const enrichedOrders = initialOrders.map((o) => ({
         ...o,
         addedBy: o.addedBy || staffRef.current.name,
@@ -215,6 +236,7 @@ export function useLoungeSync(staff: StaffProfile) {
             ? {
                 ...t,
                 status: 'occupied',
+                tableNumber: cleanTableNum !== undefined ? cleanTableNum : t.tableNumber,
                 seatingTier,
                 timeLimitMinutes,
                 partySize,
@@ -233,10 +255,29 @@ export function useLoungeSync(staff: StaffProfile) {
         tableId,
         partySize,
         guestName,
+        tableNumber: cleanTableNum,
         serverName: staffRef.current.name,
         initialOrders: enrichedOrders,
         seatingTier,
         timeLimitMinutes,
+      });
+    },
+    [sendAction]
+  );
+
+  const updateTableNumber = useCallback(
+    (tableId: string, tableNumber: string) => {
+      const clean = tableNumber.trim() || undefined;
+      const now = Date.now();
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId ? { ...t, tableNumber: clean, updatedAt: now } : t
+        )
+      );
+      sendAction({
+        type: 'table:updateNumber',
+        tableId,
+        tableNumber: clean || '',
       });
     },
     [sendAction]
@@ -332,7 +373,7 @@ export function useLoungeSync(staff: StaffProfile) {
           (s, o) => s + o.unitPrice * o.quantity,
           0
         );
-        const tax = subtotal * TAX_RATE;
+        const tax = 0;
         const localSess: CompletedSession = {
           id: `sess-${now}-${target.id}`,
           tableName: target.name,
@@ -350,7 +391,7 @@ export function useLoungeSync(staff: StaffProfile) {
           orders: target.orders,
           subtotal,
           tax,
-          total: subtotal + tax,
+          total: subtotal,
         };
         setHistory((prev) => [localSess, ...prev]);
       }
@@ -383,6 +424,128 @@ export function useLoungeSync(staff: StaffProfile) {
     [sendAction, tables]
   );
 
+  const upgradeToVip = useCallback(
+    (tableId: string) => {
+      const now = Date.now();
+      const item: OrderItem = {
+        id: `ord-${now}-${Math.random().toString(36).slice(2, 7)}-vip`,
+        menuItemId: 'r-upgrade-vip',
+        name: 'Upgrade to VIP',
+        category: 'refill',
+        unitPrice: VIP_UPGRADE_PRICE,
+        quantity: 1,
+        notes: 'Upgraded One Time to VIP',
+        addedBy: staffRef.current.name,
+        prepStatus: 'served',
+        orderedAt: now,
+      };
+
+      setTables((prev) =>
+        prev.map((t) => {
+          if (t.id !== tableId) return t;
+          return {
+            ...t,
+            seatingTier: 'vip_allday',
+            timeLimitMinutes: undefined,
+            orders: t.orders.some((o) => o.id === item.id)
+              ? t.orders
+              : [...t.orders, item],
+            updatedAt: now,
+          };
+        })
+      );
+
+      sendAction({
+        type: 'table:upgradeVip',
+        tableId,
+        item,
+      });
+    },
+    [sendAction]
+  );
+
+  const updateOrderFlavors = useCallback(
+    (tableId: string, orderId: string, nextFlavors: string[]) => {
+      const sanitized = nextFlavors
+        .map((f) => f.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+      const now = Date.now();
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId
+            ? {
+                ...t,
+                orders: t.orders.map((o) =>
+                  o.id === orderId
+                    ? {
+                        ...o,
+                        flavors: sanitized.length > 0 ? sanitized : undefined,
+                      }
+                    : o
+                ),
+                updatedAt: now,
+              }
+            : t
+        )
+      );
+      sendAction({
+        type: 'table:updateOrderFlavors',
+        tableId,
+        orderId,
+        flavors: sanitized,
+      });
+    },
+    [sendAction]
+  );
+
+  const addFlavor = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setFlavors((prev) => {
+        const existing = prev.find(
+          (f) => f.name.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (existing) {
+          return prev.map((f) =>
+            f.id === existing.id ? { ...f, available: true } : f
+          );
+        }
+        return [
+          ...prev,
+          {
+            id: `flv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: trimmed,
+            available: true,
+          },
+        ];
+      });
+      sendAction({ type: 'flavors:add', name: trimmed });
+    },
+    [sendAction]
+  );
+
+  const toggleFlavorAvailability = useCallback(
+    (flavorId: string) => {
+      setFlavors((prev) =>
+        prev.map((f) =>
+          f.id === flavorId ? { ...f, available: !f.available } : f
+        )
+      );
+      sendAction({ type: 'flavors:toggle', flavorId });
+    },
+    [sendAction]
+  );
+
+  const removeFlavor = useCallback(
+    (flavorId: string) => {
+      setFlavors((prev) => prev.filter((f) => f.id !== flavorId));
+      sendAction({ type: 'flavors:remove', flavorId });
+    },
+    [sendAction]
+  );
+
   const moveTable = useCallback(
     (tableId: string, x: number, y: number) => {
       const now = Date.now();
@@ -400,6 +563,7 @@ export function useLoungeSync(staff: StaffProfile) {
     (data: {
       id?: string;
       name: string;
+      tableNumber?: string;
       floor: TableFloor;
       zone: TableZone;
       seats: number;
@@ -435,7 +599,7 @@ export function useLoungeSync(staff: StaffProfile) {
       .map((t) => {
         const seatedAt = t.seatedAt || now;
         const sub = t.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0);
-        const tax = sub * TAX_RATE;
+        const tax = 0;
         return {
           id: `sess-${now}-${t.id}`,
           tableName: t.name,
@@ -450,7 +614,7 @@ export function useLoungeSync(staff: StaffProfile) {
           orders: t.orders,
           subtotal: sub,
           tax,
-          total: sub + tax,
+          total: sub,
         };
       });
 
@@ -536,13 +700,20 @@ export function useLoungeSync(staff: StaffProfile) {
     settings,
     activeStaff,
     lastBatchReport,
+    flavors,
     connectionState,
     seatTable,
+    updateTableNumber,
     addOrder,
     updateOrderQty,
     refreshCoals,
     advancePrep,
     checkoutTable,
+    upgradeToVip,
+    updateOrderFlavors,
+    addFlavor,
+    toggleFlavorAvailability,
+    removeFlavor,
     moveTable,
     saveTableLayout,
     deleteTable,

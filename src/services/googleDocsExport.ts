@@ -1,4 +1,4 @@
-import { FLOORS, TAX_RATE } from '../data/menu';
+import { FLOORS } from '../data/menu';
 import type { BatchReport, CompletedSession, LoungeTable } from '../types';
 
 export interface DailyReportPayload {
@@ -48,7 +48,7 @@ export function buildDailyReportPayload(params: {
       if (table.status !== 'occupied' || !table.seatedAt) continue;
       openTablesIncluded += 1;
       const sub = table.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0);
-      const tax = sub * TAX_RATE;
+      const tax = 0;
       allSessions.push({
         id: `open-${table.id}`,
         tableName: `${table.name} (Open)`,
@@ -63,13 +63,13 @@ export function buildDailyReportPayload(params: {
         orders: table.orders,
         subtotal: sub,
         tax,
-        total: sub + tax,
+        total: sub,
       });
     }
   }
 
   const subtotal = allSessions.reduce((s, sess) => s + sess.subtotal, 0);
-  const tax = allSessions.reduce((s, sess) => s + sess.tax, 0);
+  const tax = 0;
   const total = allSessions.reduce((s, sess) => s + sess.total, 0);
 
   return {
@@ -101,8 +101,6 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
   if (report.openTablesIncluded > 0) {
     lines.push(`Open Tables Included: ${report.openTablesIncluded}`);
   }
-  lines.push(`Subtotal: $${report.subtotal.toFixed(2)}`);
-  lines.push(`Tax (8%): $${report.tax.toFixed(2)}`);
   lines.push(`GRAND TOTAL: $${report.total.toFixed(2)}`);
   lines.push('');
   lines.push('REVENUE BY FLOOR');
@@ -126,6 +124,7 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
   let xtraVipAllDayCount = 0;
   let xtraVipOneTimeCount = 0;
   let xtraDownstairsCount = 0;
+  let upgradeVipCount = 0;
   let refillCount = 0;
   let iceHoseCount = 0;
   const flavorCounts: Record<string, number> = {};
@@ -150,6 +149,9 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
       if (order.menuItemId === 'r-xtra-downstairs') {
         xtraDownstairsCount += order.quantity;
       }
+      if (order.menuItemId === 'r-upgrade-vip') {
+        upgradeVipCount += order.quantity;
+      }
       if (order.menuItemId === 'r1') refillCount += order.quantity;
       if (order.iceHose || order.menuItemId === 'r-ice') {
         iceHoseCount += order.quantity;
@@ -170,6 +172,7 @@ export function formatReportDocumentText(report: DailyReportPayload): string {
   lines.push(`- Xtra Person · All Day VIP ($65): ${xtraVipAllDayCount}`);
   lines.push(`- Xtra Person · One Time VIP ($20): ${xtraVipOneTimeCount}`);
   lines.push(`- Xtra Person · Downstairs ($10): ${xtraDownstairsCount}`);
+  lines.push(`- Upgrade to VIP ($200): ${upgradeVipCount}`);
   lines.push(`- Hookah Refills: ${refillCount}`);
   lines.push(`- Ice Hose Add-ons: ${iceHoseCount}`);
 

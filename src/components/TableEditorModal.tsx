@@ -11,6 +11,7 @@ interface TableEditorModalProps {
   onSave: (data: {
     id?: string;
     name: string;
+    tableNumber?: string;
     floor: TableFloor;
     zone: TableZone;
     seats: number;
@@ -28,6 +29,7 @@ export const TableEditorModal: React.FC<TableEditorModalProps> = ({
   onDelete,
 }) => {
   const [name, setName] = useState('');
+  const [tableNumber, setTableNumber] = useState('');
   const [floor, setFloor] = useState<TableFloor>(defaultFloor);
   const [zone, setZone] = useState<TableZone>('Lounge');
   const [seats, setSeats] = useState('4');
@@ -41,12 +43,14 @@ export const TableEditorModal: React.FC<TableEditorModalProps> = ({
     setConfirmDelete(false);
     if (table) {
       setName(table.name);
+      setTableNumber(table.tableNumber || '');
       setFloor(table.floor);
       setZone(table.zone);
       setSeats(String(table.seats));
       setShape(table.shape);
     } else {
       setName('');
+      setTableNumber('');
       setFloor(defaultFloor);
       setZone(defaultFloor === 'Outside' ? 'Patio' : 'Lounge');
       setSeats('4');
@@ -66,6 +70,7 @@ export const TableEditorModal: React.FC<TableEditorModalProps> = ({
     onSave({
       id: table?.id,
       name: cleanName,
+      tableNumber: tableNumber.trim() || undefined,
       floor,
       zone,
       seats: Math.max(1, parseInt(seats, 10) || 4),
@@ -113,20 +118,35 @@ export const TableEditorModal: React.FC<TableEditorModalProps> = ({
         </div>
 
         <form onSubmit={handleSave} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-cyan-200/80 mb-1.5">
-              Table Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setErrorMsg('');
-              }}
-              placeholder="e.g. 2F-VIP 3 or Cabana 2"
-              className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
-            />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-cyan-200/80 mb-1.5">
+                Table Name
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setErrorMsg('');
+                }}
+                placeholder="e.g. 2F-VIP 3 or Cabana 2"
+                className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-cyan-200/80 mb-1.5">
+                Table #
+              </label>
+              <input
+                type="text"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                placeholder="e.g. 12"
+                className="w-full min-h-[44px] rounded-xl border border-cyan-500/25 bg-[#060913] px-3 py-2.5 font-mono text-sm text-cyan-200 placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+              />
+            </div>
           </div>
 
           <div>

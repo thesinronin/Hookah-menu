@@ -1,20 +1,26 @@
 import 'dotenv/config';
 import express from 'express';
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createInitialTables, DEFAULT_SETTINGS, TAX_RATE } from './src/data/menu.ts';
+import { createInitialFlavors, createInitialTables, DEFAULT_SETTINGS } from './src/data/menu.ts';
+import { buildEscPosBuffer } from './src/services/kitchenPrinter.ts';
 import type {
   ActiveStaffMember,
   BatchReport,
   CompletedSession,
+  FlavorOption,
+  KitchenTicketPayload,
   LoungeSettings,
   LoungeStateSnapshot,
   LoungeTable,
   OrderItem,
   PrepStatus,
+  PrinterMode,
+  PrinterPaperWidth,
   SeatingTierId,
   StaffRole,
   TableFloor,
@@ -31,6 +37,7 @@ interface PersistedData {
   history: CompletedSession[];
   settings: LoungeSettings;
   lastBatchReport: BatchReport | null;
+  flavors: FlavorOption[];
 }
 
 function loadPersistedState(): PersistedData {
@@ -44,6 +51,10 @@ function loadPersistedState(): PersistedData {
           history: Array.isArray(parsed.history) ? parsed.history : [],
           settings: parsed.settings ?? DEFAULT_SETTINGS,
           lastBatchReport: parsed.lastBatchReport ?? null,
+          flavors:
+            Array.isArray(parsed.flavors) && parsed.flavors.length > 0
+              ? parsed.flavors
+              : createInitialFlavors(),
         };
       }
     }
@@ -55,6 +66,7 @@ function loadPersistedState(): PersistedData {
     history: [],
     settings: { ...DEFAULT_SETTINGS },
     lastBatchReport: null,
+    flavors: createInitialFlavors(),
   };
 }
 
@@ -80,6 +92,7 @@ function getSnapshot(): LoungeStateSnapshot {
     settings: state.settings,
     activeStaff: Array.from(connectedStaff.values()),
     lastBatchReport: state.lastBatchReport,
+    flavors: state.flavors,
   };
 }
 
@@ -125,7 +138,7 @@ async function startServer() {
         (s, o) => s + o.unitPrice * o.quantity,
         0
       );
-      const tax = sub * TAX_RATE;
+      const tax = 0;
       autoClosedSessions.push({
         id: `sess-${now}-${table.id}`,
         tableName: table.name,
@@ -143,7 +156,7 @@ async function startServer() {
         orders: table.orders,
         subtotal: sub,
         tax,
-        total: sub + tax,
+        total: sub,
       });
 
       table.status = 'available';
@@ -194,6 +207,64 @@ async function startServer() {
     const staffName = String(rawName || 'Manager').trim() || 'Manager';
     const report = executeBatchOut(staffName);
     res.json({ ok: true, report, snapshot: getSnapshot() });
+  });
+
+  app.post('/api/print/kitchen-ticket', (req, res) => {
+    const body = (req.body || {}) as {
+      printerIp?: unknown;
+      printerPort?: unknown;
+      paperWidth?: unknown;
+      ticket?: KitchenTicketPayload;
+    };
+    const printerIp = String(body.printerIp || '').trim();
+    const printerPort = Math.max(1, Math.min(65535, Number(body.printerPort) || 9100));
+    const paperWidth: PrinterPaperWidth =
+      body.paperWidth === '58mm' ? '58mm' : '80mm';
+    const ticket = body.ticket;
+
+    if (!printerIp) {
+      res.status(400).json({ ok: false, error: 'Missing printer IP address.' });
+      return;
+    }
+    if (!ticket || !Array.isArray(ticket.items) || ticket.items.length === 0) {
+      res.status(400).json({ ok: false, error: 'Kitchen ticket has no items to print.' });
+      return;
+    }
+
+    const escPosBytes = Buffer.from(buildEscPosBuffer(ticket, paperWidth));
+    const socket = net.createConnection({ host: printerIp, port: printerPort });
+    let responded = false;
+
+    socket.setTimeout(3500);
+    socket.on('connect', () => {
+      socket.write(escPosBytes, () => {
+        socket.end();
+        if (!responded) {
+          responded = true;
+          res.json({ ok: true, bytesSent: escPosBytes.length });
+        }
+      });
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      if (!responded) {
+        responded = true;
+        res.status(502).json({
+          ok: false,
+          error: `Timed out connecting to thermal printer at ${printerIp}:${printerPort}. Check printer power/Wi-Fi or use Android/System Print.`,
+        });
+      }
+    });
+    socket.on('error', (err) => {
+      socket.destroy();
+      if (!responded) {
+        responded = true;
+        res.status(502).json({
+          ok: false,
+          error: `Could not reach thermal printer at ${printerIp}:${printerPort} (${err.message}).`,
+        });
+      }
+    });
   });
 
   if (process.env.NODE_ENV === 'production') {
@@ -257,6 +328,7 @@ async function startServer() {
             const tableId = String(msg.tableId || '');
             const partySize = Math.max(1, Number(msg.partySize) || 2);
             const guestName = String(msg.guestName || '').trim() || undefined;
+            const tableNumber = String(msg.tableNumber || '').trim() || undefined;
             const serverName = String(msg.serverName || 'Staff').trim();
             const initialOrders = Array.isArray(msg.initialOrders)
               ? (msg.initialOrders as OrderItem[]).map((o) => ({
@@ -269,6 +341,9 @@ async function startServer() {
             if (!table) break;
 
             table.status = 'occupied';
+            if (tableNumber !== undefined) {
+              table.tableNumber = tableNumber;
+            }
             table.seatingTier = (msg.seatingTier as SeatingTierId | undefined) || undefined;
             table.timeLimitMinutes =
               typeof msg.timeLimitMinutes === 'number' && msg.timeLimitMinutes > 0
@@ -280,6 +355,20 @@ async function startServer() {
             table.seatedAt = now;
             table.lastCoalCheckAt = now;
             table.orders = initialOrders;
+            table.updatedAt = now;
+
+            scheduleSave();
+            broadcast(wss, { type: 'table:updated', table });
+            break;
+          }
+
+          case 'table:updateNumber': {
+            const tableId = String(msg.tableId || '');
+            const tableNumber = String(msg.tableNumber || '').trim() || undefined;
+            const table = state.tables.find((t) => t.id === tableId);
+            if (!table) break;
+
+            table.tableNumber = tableNumber;
             table.updatedAt = now;
 
             scheduleSave();
@@ -360,6 +449,54 @@ async function startServer() {
             break;
           }
 
+          case 'table:upgradeVip': {
+            const tableId = String(msg.tableId || '');
+            const item = msg.item as OrderItem | undefined;
+            if (!item || !item.id) break;
+
+            const table = state.tables.find((t) => t.id === tableId);
+            if (!table || table.status !== 'occupied') break;
+
+            if (!table.orders.some((o) => o.id === item.id)) {
+              table.orders.push(item);
+            }
+            table.seatingTier = 'vip_allday';
+            table.timeLimitMinutes = undefined;
+            table.updatedAt = now;
+
+            scheduleSave();
+            broadcast(wss, { type: 'table:updated', table });
+            break;
+          }
+
+          case 'table:updateOrderFlavors': {
+            const tableId = String(msg.tableId || '');
+            const orderId = String(msg.orderId || '');
+            const nextFlavors = Array.isArray(msg.flavors)
+              ? (msg.flavors as unknown[])
+                  .map((f) => String(f || '').trim())
+                  .filter(Boolean)
+                  .slice(0, 3)
+              : [];
+
+            const table = state.tables.find((t) => t.id === tableId);
+            if (!table) break;
+
+            table.orders = table.orders.map((o) =>
+              o.id === orderId
+                ? {
+                    ...o,
+                    flavors: nextFlavors.length > 0 ? nextFlavors : undefined,
+                  }
+                : o
+            );
+            table.updatedAt = now;
+
+            scheduleSave();
+            broadcast(wss, { type: 'table:updated', table });
+            break;
+          }
+
           case 'table:checkout': {
             const tableId = String(msg.tableId || '');
             const staffName = String(msg.staffName || 'Staff');
@@ -370,7 +507,7 @@ async function startServer() {
               (s, o) => s + o.unitPrice * o.quantity,
               0
             );
-            const tax = subtotal * TAX_RATE;
+            const tax = 0;
             const session: CompletedSession = {
               id: `sess-${now}-${table.id}`,
               tableName: table.name,
@@ -388,7 +525,7 @@ async function startServer() {
               orders: table.orders,
               subtotal,
               tax,
-              total: subtotal + tax,
+              total: subtotal,
             };
 
             state.history.unshift(session);
@@ -433,17 +570,20 @@ async function startServer() {
             const payload = msg.data as {
               id?: string;
               name: string;
+              tableNumber?: string;
               floor: TableFloor;
               zone: TableZone;
               seats: number;
               shape: TableShape;
             };
             if (!payload || !payload.name) break;
+            const cleanTableNum = String(payload.tableNumber || '').trim() || undefined;
 
             if (payload.id) {
               const table = state.tables.find((t) => t.id === payload.id);
               if (!table) break;
               table.name = payload.name.trim();
+              table.tableNumber = cleanTableNum;
               table.floor = payload.floor;
               table.zone = payload.zone;
               table.seats = Math.max(1, Number(payload.seats) || 4);
@@ -461,6 +601,7 @@ async function startServer() {
               const newTable: LoungeTable = {
                 id: newId,
                 name: payload.name.trim(),
+                tableNumber: cleanTableNum,
                 floor: payload.floor,
                 zone: payload.zone,
                 seats: Math.max(1, Number(payload.seats) || 4),
@@ -493,6 +634,13 @@ async function startServer() {
           case 'settings:update': {
             const nextSettings = msg.settings as Partial<LoungeSettings>;
             if (!nextSettings) break;
+            const modeVal: PrinterMode =
+              nextSettings.kitchenPrinterMode === 'network' ||
+              nextSettings.kitchenPrinterMode === 'bluetooth'
+                ? nextSettings.kitchenPrinterMode
+                : 'system';
+            const widthVal: PrinterPaperWidth =
+              nextSettings.kitchenPrinterWidth === '58mm' ? '58mm' : '80mm';
             state.settings = {
               coalAlertMinutes: Math.max(
                 5,
@@ -502,9 +650,55 @@ async function startServer() {
                 15,
                 Math.min(360, Number(nextSettings.longStayAlertMinutes) || 120)
               ),
+              kitchenPrinterMode: modeVal,
+              kitchenPrinterIp: String(nextSettings.kitchenPrinterIp || '').trim(),
+              kitchenPrinterPort: Math.max(
+                1,
+                Math.min(65535, Number(nextSettings.kitchenPrinterPort) || 9100)
+              ),
+              kitchenPrinterWidth: widthVal,
+              autoPrintKitchenTicket: Boolean(nextSettings.autoPrintKitchenTicket),
             };
             scheduleSave();
             broadcast(wss, { type: 'settings:updated', settings: state.settings });
+            break;
+          }
+
+          case 'flavors:add': {
+            const rawName = String(msg.name || '').trim();
+            if (!rawName) break;
+            const existing = state.flavors.find(
+              (f) => f.name.toLowerCase() === rawName.toLowerCase()
+            );
+            if (existing) {
+              existing.available = true;
+            } else {
+              state.flavors.push({
+                id: `flv-${now}-${Math.random().toString(36).slice(2, 6)}`,
+                name: rawName,
+                available: true,
+              });
+            }
+            scheduleSave();
+            broadcast(wss, { type: 'flavors:updated', flavors: state.flavors });
+            break;
+          }
+
+          case 'flavors:toggle': {
+            const flavorId = String(msg.flavorId || '');
+            const target = state.flavors.find((f) => f.id === flavorId);
+            if (!target) break;
+            target.available = !target.available;
+            scheduleSave();
+            broadcast(wss, { type: 'flavors:updated', flavors: state.flavors });
+            break;
+          }
+
+          case 'flavors:remove': {
+            const flavorId = String(msg.flavorId || '');
+            state.flavors = state.flavors.filter((f) => f.id !== flavorId);
+            scheduleSave();
+            broadcast(wss, { type: 'flavors:updated', flavors: state.flavors });
             break;
           }
 
@@ -519,6 +713,7 @@ async function startServer() {
             state.history = [];
             state.settings = { ...DEFAULT_SETTINGS };
             state.lastBatchReport = null;
+            state.flavors = createInitialFlavors();
             scheduleSave();
             broadcast(wss, { type: 'state:init', snapshot: getSnapshot() });
             break;

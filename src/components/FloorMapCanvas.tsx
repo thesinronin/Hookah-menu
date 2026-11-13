@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Flame, Move, Sun, Layers } from 'lucide-react';
-import { TAX_RATE } from '../data/menu';
 import type { LoungeSettings, LoungeTable, TableFloor } from '../types';
 import { formatDuration } from './TimerDisplay';
 
@@ -47,8 +46,7 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
     (now - table.seatedAt) / 60_000 >=
       (table.timeLimitMinutes ?? settings.longStayAlertMinutes);
 
-  const total =
-    table.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0) * (1 + TAX_RATE);
+  const total = table.orders.reduce((s, o) => s + o.unitPrice * o.quantity, 0);
   const hookahCount = table.orders
     .filter((o) => o.category === 'hookah' || o.category === 'refill')
     .reduce((s, o) => s + o.quantity, 0);
@@ -167,7 +165,7 @@ const DraggableTableNode: React.FC<DraggableNodeProps> = ({
     >
       <div className="flex items-center gap-1.5 max-w-full">
         <span className="truncate text-sm font-bold text-slate-100 font-display tracking-wide">
-          {table.name}
+          {table.tableNumber ? `#${table.tableNumber} · ${table.name}` : table.name}
         </span>
         {isEditing && <Move className="h-3.5 w-3.5 shrink-0 text-cyan-400" />}
         {!isEditing && isCoalDue && (

@@ -140,3 +140,40 @@
   width: 18px;
   flex-shrink: 0;
 }
+
+/* Thermal Kitchen Printer CSS (58mm / 80mm paper) */
+@media print {
+  @page {
+    margin: 0;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body #root > *:not(#thermal-kitchen-receipt) {
+    display: none !important;
+  }
+
+  #thermal-kitchen-receipt {
+    display: block !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    padding: 4mm !important;
+    margin: 0 !important;
+  }
+
+  #thermal-kitchen-receipt[data-width='58mm'] {
+    width: 58mm !important;
+  }
+
+  #thermal-kitchen-receipt[data-width='80mm'] {
+    width: 80mm !important;
+  }
+}
+

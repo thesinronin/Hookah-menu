@@ -188,18 +188,6 @@ export const GoogleDocsExportModal: React.FC<GoogleDocsExportModalProps> = ({
                       {report.closedSessions.length}
                     </span>
                   </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Subtotal</span>
-                    <span className="font-mono text-slate-200 tabular-nums">
-                      ${report.subtotal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Tax (8%)</span>
-                    <span className="font-mono text-slate-200 tabular-nums">
-                      ${report.tax.toFixed(2)}
-                    </span>
-                  </div>
                   <div className="flex justify-between border-t border-cyan-500/20 pt-2 text-sm font-bold text-slate-100">
                     <span>Grand Total</span>
                     <span className="font-mono text-cyan-300 tabular-nums">
