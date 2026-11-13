@@ -1,0 +1,460 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createInitialTables, DEFAULT_SETTINGS, TAX_RATE } from '../data/menu';
+import type {
+  ActiveStaffMember,
+  BatchReport,
+  CompletedSession,
+  LoungeSettings,
+  LoungeStateSnapshot,
+  LoungeTable,
+  OrderItem,
+  PrepStatus,
+  SeatingTierId,
+  StaffProfile,
+  TableFloor,
+  TableShape,
+  TableZone,
+} from '../types';
+
+type OutgoingAction = {
+  type: string;
+  [key: string]: unknown;
+};
+
+export function useLoungeSync(staff: StaffProfile) {
+  const [tables, setTables] = useState<LoungeTable[]>(() => createInitialTables());
+  const [history, setHistory] = useState<CompletedSession[]>([]);
+  const [settings, setSettings] = useState<LoungeSettings>(DEFAULT_SETTINGS);
+  const [activeStaff, setActiveStaff] = useState<ActiveStaffMember[]>([]);
+  const [lastBatchReport, setLastBatchReport] = useState<BatchReport | null>(null);
+  const [connectionState, setConnectionState] = useState<'connecting' | 'live' | 'reconnecting'>('connecting');
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const pendingQueueRef = useRef<OutgoingAction[]>([]);
+  const staffRef = useRef(staff);
+  staffRef.current = staff;
+
+  const sendAction = useCallback((action: OutgoingAction) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(action));
+    } else {
+      pendingQueueRef.current.push(action);
+    }
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Load initial snapshot via HTTP immediately for fast first paint
+    fetch('/api/state')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((snapshot: LoungeStateSnapshot | null) => {
+        if (!disposed && snapshot && Array.isArray(snapshot.tables)) {
+          setTables(snapshot.tables);
+          setHistory(snapshot.history || []);
+          setSettings(snapshot.settings || DEFAULT_SETTINGS);
+          setActiveStaff(snapshot.activeStaff || []);
+          setLastBatchReport(snapshot.lastBatchReport ?? null);
+        }
+      })
+      .catch(() => {});
+
+    const connect = () => {
+      if (disposed) return;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (disposed) return;
+        reconnectAttempt = 0;
+        setConnectionState('live');
+
+        // Register staff presence
+        ws.send(
+          JSON.stringify({
+            type: 'staff:join',
+            clientId: staffRef.current.clientId,
+            name: staffRef.current.name,
+            role: staffRef.current.role,
+          })
+        );
+
+        // Flush queued mutations buffered during disconnect
+        if (pendingQueueRef.current.length > 0) {
+          const queued = [...pendingQueueRef.current];
+          pendingQueueRef.current = [];
+          for (const msg of queued) {
+            ws.send(JSON.stringify(msg));
+          }
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (disposed) return;
+        try {
+          const msg = JSON.parse(event.data) as {
+            type: string;
+            snapshot?: LoungeStateSnapshot;
+            table?: LoungeTable;
+            tableId?: string;
+            session?: CompletedSession;
+            settings?: LoungeSettings;
+            activeStaff?: ActiveStaffMember[];
+          };
+
+          switch (msg.type) {
+            case 'state:init':
+              if (msg.snapshot) {
+                setTables(msg.snapshot.tables);
+                setHistory(msg.snapshot.history);
+                setSettings(msg.snapshot.settings);
+                setActiveStaff(msg.snapshot.activeStaff);
+                setLastBatchReport(msg.snapshot.lastBatchReport ?? null);
+              }
+              break;
+            case 'table:updated':
+              if (msg.table) {
+                const incoming = msg.table;
+                setTables((prev) => {
+                  const idx = prev.findIndex((t) => t.id === incoming.id);
+                  if (idx === -1) return [...prev, incoming];
+                  const next = [...prev];
+                  next[idx] = incoming;
+                  return next;
+                });
+              }
+              break;
+            case 'table:deleted':
+              if (msg.tableId) {
+                setTables((prev) => prev.filter((t) => t.id !== msg.tableId));
+              }
+              break;
+            case 'session:completed':
+              if (msg.session) {
+                const incoming = msg.session;
+                setHistory((prev) =>
+                  prev.some((s) => s.id === incoming.id) ? prev : [incoming, ...prev]
+                );
+              }
+              break;
+            case 'settings:updated':
+              if (msg.settings) {
+                setSettings(msg.settings);
+              }
+              break;
+            case 'staff:presence':
+              if (msg.activeStaff) {
+                setActiveStaff(msg.activeStaff);
+              }
+              break;
+          }
+        } catch {
+          // Ignore malformed message
+        }
+      };
+
+      ws.onclose = () => {
+        if (disposed) return;
+        setConnectionState('reconnecting');
+        const delay = Math.min(8000, 800 * Math.pow(1.6, reconnectAttempt));
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      wsRef.current?.close();
+    };
+  }, []);
+
+  // Re-broadcast staff profile update when name or role changes
+  useEffect(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'staff:join',
+          clientId: staff.clientId,
+          name: staff.name,
+          role: staff.role,
+        })
+      );
+    }
+  }, [staff.clientId, staff.name, staff.role]);
+
+  // Optimistic actions + server broadcast
+  const seatTable = useCallback(
+    (
+      tableId: string,
+      partySize: number,
+      guestName: string,
+      initialOrders: OrderItem[] = [],
+      seatingTier?: SeatingTierId,
+      timeLimitMinutes?: number
+    ) => {
+      const now = Date.now();
+      const enrichedOrders = initialOrders.map((o) => ({
+        ...o,
+        addedBy: o.addedBy || staffRef.current.name,
+      }));
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId
+            ? {
+                ...t,
+                status: 'occupied',
+                seatingTier,
+                timeLimitMinutes,
+                partySize,
+                guestName: guestName.trim() || undefined,
+                serverName: staffRef.current.name,
+                seatedAt: now,
+                lastCoalCheckAt: now,
+                orders: enrichedOrders,
+                updatedAt: now,
+              }
+            : t
+        )
+      );
+      sendAction({
+        type: 'table:seat',
+        tableId,
+        partySize,
+        guestName,
+        serverName: staffRef.current.name,
+        initialOrders: enrichedOrders,
+        seatingTier,
+        timeLimitMinutes,
+      });
+    },
+    [sendAction]
+  );
+
+  const addOrder = useCallback(
+    (tableId: string, item: OrderItem) => {
+      const now = Date.now();
+      const enriched: OrderItem = { ...item, addedBy: staffRef.current.name };
+      setTables((prev) =>
+        prev.map((t) => {
+          if (t.id !== tableId) return t;
+          if (t.orders.some((o) => o.id === enriched.id)) return t;
+          return {
+            ...t,
+            lastCoalCheckAt:
+              enriched.category === 'hookah' || enriched.category === 'refill'
+                ? now
+                : t.lastCoalCheckAt,
+            orders: [...t.orders, enriched],
+            updatedAt: now,
+          };
+        })
+      );
+      sendAction({ type: 'table:addOrder', tableId, item: enriched });
+    },
+    [sendAction]
+  );
+
+  const updateOrderQty = useCallback(
+    (tableId: string, orderId: string, delta: number) => {
+      const now = Date.now();
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId
+            ? {
+                ...t,
+                orders: t.orders
+                  .map((o) =>
+                    o.id === orderId ? { ...o, quantity: o.quantity + delta } : o
+                  )
+                  .filter((o) => o.quantity > 0),
+                updatedAt: now,
+              }
+            : t
+        )
+      );
+      sendAction({ type: 'table:updateQty', tableId, orderId, delta });
+    },
+    [sendAction]
+  );
+
+  const refreshCoals = useCallback(
+    (tableId: string) => {
+      const now = Date.now();
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId ? { ...t, lastCoalCheckAt: now, updatedAt: now } : t
+        )
+      );
+      sendAction({ type: 'table:refreshCoals', tableId });
+    },
+    [sendAction]
+  );
+
+  const advancePrep = useCallback(
+    (tableId: string, orderId: string, nextStatus: PrepStatus) => {
+      const now = Date.now();
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId
+            ? {
+                ...t,
+                orders: t.orders.map((o) =>
+                  o.id === orderId ? { ...o, prepStatus: nextStatus } : o
+                ),
+                updatedAt: now,
+              }
+            : t
+        )
+      );
+      sendAction({ type: 'table:advancePrep', tableId, orderId, nextStatus });
+    },
+    [sendAction]
+  );
+
+  const checkoutTable = useCallback(
+    (tableId: string) => {
+      const now = Date.now();
+      const target = tables.find((t) => t.id === tableId);
+      if (target && target.seatedAt) {
+        const subtotal = target.orders.reduce(
+          (s, o) => s + o.unitPrice * o.quantity,
+          0
+        );
+        const tax = subtotal * TAX_RATE;
+        const localSess: CompletedSession = {
+          id: `sess-${now}-${target.id}`,
+          tableName: target.name,
+          floor: target.floor,
+          zone: target.zone,
+          partySize: target.partySize || 1,
+          guestName: target.guestName,
+          serverName: target.serverName || staffRef.current.name,
+          seatedAt: target.seatedAt,
+          closedAt: now,
+          durationMinutes: Math.max(
+            1,
+            Math.round((now - target.seatedAt) / 60_000)
+          ),
+          orders: target.orders,
+          subtotal,
+          tax,
+          total: subtotal + tax,
+        };
+        setHistory((prev) => [localSess, ...prev]);
+      }
+
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId
+            ? {
+                ...t,
+                status: 'available',
+                seatingTier: undefined,
+                timeLimitMinutes: undefined,
+                partySize: undefined,
+                guestName: undefined,
+                serverName: undefined,
+                seatedAt: undefined,
+                lastCoalCheckAt: undefined,
+                orders: [],
+                updatedAt: now,
+              }
+            : t
+        )
+      );
+      sendAction({
+        type: 'table:checkout',
+        tableId,
+        staffName: staffRef.current.name,
+      });
+    },
+    [sendAction, tables]
+  );
+
+  const moveTable = useCallback(
+    (tableId: string, x: number, y: number) => {
+      const now = Date.now();
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === tableId ? { ...t, x, y, updatedAt: now } : t
+        )
+      );
+      sendAction({ type: 'layout:moveTable', tableId, x, y });
+    },
+    [sendAction]
+  );
+
+  const saveTableLayout = useCallback(
+    (data: {
+      id?: string;
+      name: string;
+      floor: TableFloor;
+      zone: TableZone;
+      seats: number;
+      shape: TableShape;
+    }) => {
+      sendAction({ type: 'layout:saveTable', data });
+    },
+    [sendAction]
+  );
+
+  const deleteTable = useCallback(
+    (tableId: string) => {
+      setTables((prev) => prev.filter((t) => t.id !== tableId));
+      sendAction({ type: 'layout:deleteTable', tableId });
+    },
+    [sendAction]
+  );
+
+  const updateSettings = useCallback(
+    (nextSettings: LoungeSettings) => {
+      setSettings(nextSettings);
+      sendAction({ type: 'settings:update', settings: nextSettings });
+    },
+    [sendAction]
+  );
+
+  const batchOutShift = useCallback(() => {
+    sendAction({
+      type: 'shift:batchOut',
+      staffName: staffRef.current.name,
+    });
+  }, [sendAction]);
+
+  const resetDemo = useCallback(() => {
+    sendAction({ type: 'state:resetDemo' });
+  }, [sendAction]);
+
+  return {
+    tables,
+    history,
+    settings,
+    activeStaff,
+    lastBatchReport,
+    connectionState,
+    seatTable,
+    addOrder,
+    updateOrderQty,
+    refreshCoals,
+    advancePrep,
+    checkoutTable,
+    moveTable,
+    saveTableLayout,
+    deleteTable,
+    updateSettings,
+    batchOutShift,
+    resetDemo,
+  };
+}

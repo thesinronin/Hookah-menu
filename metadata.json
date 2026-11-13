@@ -1,0 +1,6 @@
+{
+  "name": "EmberPOS — Hookah Lounge Table & Order Manager",
+  "description": "Real-time multi-staff hookah lounge POS tracking seated tables, live session & coal timers, flavor mix orders, 2D floor layout editor across 2 floors and outside seating, and audio timer alerts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
